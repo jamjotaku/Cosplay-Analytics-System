@@ -31,44 +31,70 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
   // 平均肌色比率
   const avgSkin = (records.reduce((acc, r) => acc + r.skinRatio, 0) / records.length) * 100;
 
-  // 肌色高グループ(30%以上) vs 低グループ(30%未満)の平均いいね数
-  const highSkinGroup = records.filter((r) => r.skinRatio >= 0.3);
-  const lowSkinGroup = records.filter((r) => r.skinRatio < 0.3);
+  // 3段階の露出層グループ分割 (高露出: >=18%, 中露出: 8〜18%, 低露出: <8%)
+  const highSkinGroup = records.filter((r) => r.skinRatio >= 0.18);
+  const midSkinGroup = records.filter((r) => r.skinRatio >= 0.08 && r.skinRatio < 0.18);
+  const lowSkinGroup = records.filter((r) => r.skinRatio < 0.08);
 
   const avgLikesHigh = highSkinGroup.length > 0
     ? Math.round(highSkinGroup.reduce((a, b) => a + b.likes, 0) / highSkinGroup.length)
+    : 0;
+
+  const avgLikesMid = midSkinGroup.length > 0
+    ? Math.round(midSkinGroup.reduce((a, b) => a + b.likes, 0) / midSkinGroup.length)
     : 0;
 
   const avgLikesLow = lowSkinGroup.length > 0
     ? Math.round(lowSkinGroup.reduce((a, b) => a + b.likes, 0) / lowSkinGroup.length)
     : 0;
 
-  const skinEffectMultiplier = avgLikesLow > 0 ? (avgLikesHigh / avgLikesLow).toFixed(2) : '-';
+  const highVsLowMultiplier = avgLikesLow > 0 && avgLikesHigh > 0
+    ? (avgLikesHigh / avgLikesLow).toFixed(2)
+    : '-';
+
+  const midVsLowMultiplier = avgLikesLow > 0 && avgLikesMid > 0
+    ? (avgLikesMid / avgLikesLow).toFixed(2)
+    : '-';
 
   return (
     <div className="space-y-6">
-      {/* 統計サマリーカード */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-xl">
-          <p className="text-xs text-slate-400">平均 肌色検出比率</p>
-          <p className="text-2xl font-bold text-pink-400 mt-1">{avgSkin.toFixed(1)}%</p>
-          <p className="text-[11px] text-slate-500 mt-1">蓄積件数: {records.length} 件</p>
+      {/* 露出3区分 統計サマリーカード */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-slate-900/80 border border-slate-800 p-3 sm:p-4 rounded-xl sm:rounded-2xl">
+          <p className="text-[11px] sm:text-xs text-slate-400">平均 肌色検出率</p>
+          <p className="text-xl sm:text-2xl font-bold text-pink-400 mt-1">{avgSkin.toFixed(1)}%</p>
+          <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1">全体: {records.length} 件</p>
         </div>
 
-        <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-xl">
-          <p className="text-xs text-slate-400">肌色比率 30%以上 の平均いいね数</p>
-          <p className="text-2xl font-bold text-rose-400 mt-1">{avgLikesHigh.toLocaleString()}</p>
-          <p className="text-[11px] text-slate-500 mt-1">該当件数: {highSkinGroup.length} 件</p>
+        <div className="bg-slate-900/80 border border-slate-800 p-3 sm:p-4 rounded-xl sm:rounded-2xl">
+          <p className="text-[11px] sm:text-xs text-slate-400">低露出 (&lt;8%)</p>
+          <p className="text-xl sm:text-2xl font-bold text-slate-200 mt-1">
+            {avgLikesLow > 0 ? avgLikesLow.toLocaleString() : '-'}
+          </p>
+          <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1">衣装・顔中心: {lowSkinGroup.length} 件</p>
         </div>
 
-        <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-xl">
-          <p className="text-xs text-slate-400">露出によるインプレッション倍率 (推定)</p>
-          <p className="text-2xl font-bold text-amber-400 mt-1">{skinEffectMultiplier} 倍</p>
-          <p className="text-[11px] text-slate-500 mt-1">
-            {skinEffectMultiplier !== '-' ? '低露出層と比較した平均いいね比率' : 'データ蓄積中'}
+        <div className="bg-slate-900/80 border border-slate-800 p-3 sm:p-4 rounded-xl sm:rounded-2xl border-pink-500/20">
+          <p className="text-[11px] sm:text-xs text-slate-400">中露出 (8〜18%)</p>
+          <p className="text-xl sm:text-2xl font-bold text-pink-300 mt-1">
+            {avgLikesMid > 0 ? avgLikesMid.toLocaleString() : '-'}
+          </p>
+          <p className="text-[10px] text-pink-400/80 mt-0.5 sm:mt-1">
+            {midVsLowMultiplier !== '-' ? `低露出の ${midVsLowMultiplier} 倍 (${midSkinGroup.length}件)` : `${midSkinGroup.length} 件`}
+          </p>
+        </div>
+
+        <div className="bg-slate-900/80 border border-slate-800 p-3 sm:p-4 rounded-xl sm:rounded-2xl border-rose-500/30">
+          <p className="text-[11px] sm:text-xs text-slate-400">高露出 (18%〜)</p>
+          <p className="text-xl sm:text-2xl font-bold text-rose-400 mt-1">
+            {avgLikesHigh > 0 ? avgLikesHigh.toLocaleString() : '-'}
+          </p>
+          <p className="text-[10px] text-rose-400/80 mt-0.5 sm:mt-1">
+            {highVsLowMultiplier !== '-' ? `低露出の ${highVsLowMultiplier} 倍 (${highSkinGroup.length}件)` : `${highSkinGroup.length} 件`}
           </p>
         </div>
       </div>
+
 
       {/* 散布図: 肌色比率 vs いいね数 */}
       <div className="bg-slate-900/80 border border-slate-800 p-6 rounded-2xl">
