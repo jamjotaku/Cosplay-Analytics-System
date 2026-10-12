@@ -1,0 +1,67 @@
+export interface TweetMedia {
+  type: 'photo' | 'video' | 'animated_gif';
+  url: string;
+  previewUrl: string;
+  width?: number;
+  height?: number;
+  skinRatio?: number; // 0.0 - 1.0 (肌色比率)
+  sensitiveEstimated?: boolean;
+}
+
+export interface TweetAnalysisData {
+  tweetId: string;
+  tweetUrl: string;
+  createdAt: string;
+  hoursElapsed: number;
+  
+  // Author metrics
+  authorName: string;
+  authorUsername: string;
+  authorAvatar: string;
+  authorFollowers: number;
+  
+  // Tweet metrics
+  text: string;
+  likes: number;
+  retweets: number;
+  replies: number;
+  bookmarks: number;
+  impressions: number;
+  
+  // Sensitive tag
+  possiblySensitive: boolean;
+  
+  // Media items
+  media: TweetMedia[];
+  averageSkinRatio: number; // 写真全体の平均肌色比率
+  
+  // Calculated Buzz Metrics
+  engagementTotal: number;
+  engagementRateFollowers: number; // (Likes+RP+Bookmarks) / Followers * 100
+  engagementRateViews: number;     // (Likes+RP+Bookmarks) / Impressions * 100
+  velocityHourly: number;          // Likes / HoursElapsed
+  spreadRatio: number;             // RP / Likes (拡散意欲比率)
+  
+  // Buzz Score & Grade
+  buzzScore: number;               // 0 - 100
+  buzzGrade: 'SSS' | 'S' | 'A' | 'B' | 'C';
+  buzzProbability: string;         // '超高確率でバズ中' | 'バズ発生' | '高初速・伸長見込み' | '通常推移'
+  
+  // Timestamp
+  analyzedAt: string;
+}
+
+export interface SheetRecord {
+  timestamp: string;
+  tweetUrl: string;
+  author: string;
+  followers: number;
+  likes: number;
+  retweets: number;
+  impressions: number;
+  hoursElapsed: number;
+  skinRatio: number;
+  buzzScore: number;
+  buzzGrade: string;
+  imageUrl: string;
+}
