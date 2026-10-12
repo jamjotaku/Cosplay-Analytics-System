@@ -144,6 +144,13 @@ export default function Home() {
       };
 
       setSheetRecords((prev) => [newRecord, ...prev]);
+
+      // Googleスプレッドシートへ自動同期 (GAS Webhook)
+      fetch('/api/sheet-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newRecord),
+      }).catch((e) => console.warn('Auto sync to sheet failed:', e));
     } catch (err: any) {
       setError(err.message || '予期せぬエラーが発生しました');
     } finally {
