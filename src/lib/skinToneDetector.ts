@@ -69,25 +69,52 @@ export async function analyzeImageSkinTone(
           }
         }
 
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
+          // RGBからHSV（色相・彩度・明度）を計算
+          const maxVal = Math.max(r, g, b);
+          const minVal = Math.min(r, g, b);
+          const delta = maxVal - minVal;
 
-          // 肌色判定アルゴリズム (YCrCb色空間モデル)
-          // Y = 0.299R + 0.587G + 0.114B
-          // Cr = (R - Y) * 0.713 + 128
-          // Cb = (B - Y) * 0.564 + 128
+          let hue = 0;
+          if (delta !== 0) {
+            if (maxVal === r) {
+              hue = ((g - b) / delta) % 6;
+            } else if (maxVal === g) {
+              hue = (b - r) / delta + 2;
+            } else {
+              hue = (r - g) / delta + 4;
+            }
+            hue = Math.round(hue * 60);
+            if (hue < 0) hue += 360;
+          }
+
+          const saturation = maxVal === 0 ? 0 : delta / maxVal;
+          const value = maxVal / 255;
+
+          // 肌色の色相（Hue）範囲:
+          // 人間の肌（色白〜褐色・黒肌まで全て含む）のメラニン・ヘモグロビン色素の色相は
+          // 概ね 0°〜25°（赤〜オレンジ〜赤みの黄）または 335°〜360° に集中します。
+          // 30°〜60° は純粋な黄色・金色・黄土色・木材・金髪ウィッグ・背景照明となるため除外。
+          const isSkinHue = (hue >= 0 && hue <= 25) || (hue >= 335 && hue <= 360);
+
+          // 彩度(S) & 明度(V)の適正範囲
+          // S: 0.15 〜 0.75（白飛び、グレー、過剰な蛍光色を除外）
+          // V: 0.25 〜 0.98（暗すぎる影、真っ黒、真っ白を除外）
+          const isHsvSkin = isSkinHue && saturation >= 0.15 && saturation <= 0.75 && value >= 0.25 && value <= 0.98;
+
+          // YCrCb色空間判定 (Y: 輝度, Cr: 赤成分, Cb: 青成分)
           const yVal = 0.299 * r + 0.587 * g + 0.114 * b;
           const cr = (r - yVal) * 0.713 + 128;
           const cb = (b - yVal) * 0.564 + 128;
 
-          // 肌色領域条件: Cr ∈ [133, 173] かつ Cb ∈ [77, 127]
-          // RGBルール併用: R > G > B、R - G > 15
-          const isYCrCbSkin = cr >= 133 && cr <= 173 && cb >= 77 && cb <= 127;
-          const isRgbSkin = r > 95 && g > 40 && b > 20 && (r - g) > 15 && (r > b) && (Math.max(r, g, b) - Math.min(r, g, b) > 15);
+          // 厳密なCr/Cb条件: 黄色系はCbが低くなりCrが下がるため、肌色の楕円領域をタイトに制限
+          const isYCrCbSkin = cr >= 135 && cr <= 170 && cb >= 85 && cb <= 125;
 
-          const isSkin = isYCrCbSkin || isRgbSkin;
+          // RGB比率条件: 肌は必ず赤み(R)が主成分で、Gより明確に高く、極端な黄色(R≈G)ではない
+          // 黄色・ゴールド衣装防止: r - g が 20 以上、かつ g - b が適度であること
+          const isStrictRgbSkin = r > g && g > b && (r - g) >= 20 && (r - b) >= 30;
+
+          // 最終判定: HSV条件を満たし、かつ YCrCb または 厳格RGB条件を満たすこと
+          const isSkin = isHsvSkin && (isYCrCbSkin || isStrictRgbSkin);
 
           if (isSkin) {
             skinPixels++;
