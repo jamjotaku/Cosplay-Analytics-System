@@ -166,7 +166,16 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function parseGraphQLResult(result: any, tweetId: string, tweetUrl: string) {
+function parseGraphQLResult(rawResult: any, tweetId: string, tweetUrl: string) {
+  // TweetWithVisibilityResults などのラッパーを展開
+  let result = rawResult;
+  if (result?.__typename === 'TweetWithVisibilityResults' && result?.tweet) {
+    result = result.tweet;
+  }
+  if (result?.__typename === 'TweetWithCommunityResults' && result?.tweet) {
+    result = result.tweet;
+  }
+
   const legacy = result?.legacy || result?.tweet?.legacy || {};
   const core = result?.core?.user_results?.result || result?.tweet?.core?.user_results?.result || {};
   const userLegacy = core?.legacy || {};
@@ -184,12 +193,15 @@ function parseGraphQLResult(result: any, tweetId: string, tweetUrl: string) {
     });
   }
 
+  const authorName = userLegacy.name || core?.rest_id || 'Unknown';
+  const authorUsername = userLegacy.screen_name || 'unknown';
+
   return {
     tweetId,
     tweetUrl,
     createdAt: legacy.created_at || new Date().toISOString(),
-    authorName: userLegacy.name || 'Unknown',
-    authorUsername: userLegacy.screen_name || 'unknown',
+    authorName,
+    authorUsername,
     authorAvatar: userLegacy.profile_image_url_https || '',
     authorFollowers: userLegacy.followers_count || 0,
     text: legacy.full_text || '',
