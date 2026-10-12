@@ -24,10 +24,15 @@ export default function Home() {
   // 公開CSV URL
   const sheetCsvUrl = process.env.NEXT_PUBLIC_SHEET_CSV_URL || '';
 
-  // 初回データ読み込み
+  // 初回データ読み込み & PWA サービスワーカー登録
   useEffect(() => {
     if (sheetCsvUrl) {
       loadSheetData();
+    }
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch((err) => {
+        console.warn('SW registration failed:', err);
+      });
     }
   }, [sheetCsvUrl]);
 
@@ -184,87 +189,89 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-pink-500 selection:text-white">
       {/* ナビゲーションバー */}
-      <header className="border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-pink-500 via-rose-500 to-amber-400 flex items-center justify-center shadow-lg shadow-pink-500/20">
-              <Sparkles className="w-5 h-5 text-white" />
+      <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-pink-500 via-rose-500 to-amber-400 flex items-center justify-center shadow-lg shadow-pink-500/20 shrink-0">
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-base font-bold tracking-tight text-white flex items-center gap-2">
-                Cosplay Analytics System
-                <span className="text-[10px] bg-pink-500/20 text-pink-400 font-semibold px-2 py-0.5 rounded-full border border-pink-500/30">
+              <h1 className="text-sm sm:text-base font-bold tracking-tight text-white flex items-center gap-1.5">
+                Cosplay Analytics
+                <span className="text-[9px] sm:text-[10px] bg-pink-500/20 text-pink-400 font-semibold px-1.5 py-0.5 rounded-full border border-pink-500/30">
                   v1.0
                 </span>
               </h1>
-              <p className="text-[11px] text-slate-400 hidden sm:block">X画像ポストのバズ初速 & 肌色露出相関ダッシュボード</p>
+              <p className="text-[10px] text-slate-400 hidden md:block">X画像ポストのバズ初速 & 肌色露出相関ダッシュボード</p>
             </div>
           </div>
 
-          {/* タブ切り替え */}
-          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs">
+          {/* タブ切り替え (スマホでも押しやすいタッチ最適化) */}
+          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs shrink-0">
             <button
               onClick={() => setActiveTab('analyzer')}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 font-medium ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition flex items-center gap-1 sm:gap-1.5 font-medium text-[11px] sm:text-xs ${
                 activeTab === 'analyzer'
                   ? 'bg-pink-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <Search className="w-3.5 h-3.5" />
-              単体分析
+              <span>単体分析</span>
             </button>
             <button
               onClick={() => setActiveTab('correlation')}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 font-medium ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition flex items-center gap-1 sm:gap-1.5 font-medium text-[11px] sm:text-xs ${
                 activeTab === 'correlation'
                   ? 'bg-pink-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <BarChart3 className="w-3.5 h-3.5" />
-              露出相関
+              <span>露出相関</span>
             </button>
             <button
               onClick={() => setActiveTab('history')}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 font-medium ${
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition flex items-center gap-1 sm:gap-1.5 font-medium text-[11px] sm:text-xs ${
                 activeTab === 'history'
                   ? 'bg-pink-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <Table className="w-3.5 h-3.5" />
-              シート記録 ({sheetRecords.length})
+              <span>シート ({sheetRecords.length})</span>
             </button>
           </div>
         </div>
       </header>
 
       {/* メインコンテンツ */}
-      <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full space-y-8">
+      <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8 w-full space-y-6 sm:space-y-8">
         {/* 入力検索バー */}
-        <div className="max-w-3xl mx-auto space-y-3">
-          <form onSubmit={handleAnalyze} className="relative flex items-center">
-            <input
-              type="text"
-              value={tweetUrl}
-              onChange={(e) => setTweetUrl(e.target.value)}
-              placeholder="https://x.com/username/status/1234567890..."
-              className="w-full bg-slate-900/90 border border-slate-800 rounded-2xl pl-4 pr-32 py-3.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition shadow-inner"
-            />
+        <div className="max-w-3xl mx-auto space-y-2 sm:space-y-3">
+          <form onSubmit={handleAnalyze} className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={tweetUrl}
+                onChange={(e) => setTweetUrl(e.target.value)}
+                placeholder="XポストURLを貼り付け (https://x.com/...)"
+                className="w-full bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl px-4 py-3 sm:py-3.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition shadow-inner"
+              />
+            </div>
             <button
               type="submit"
               disabled={loading || !tweetUrl.trim()}
-              className="absolute right-2 bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white font-medium text-xs px-5 py-2.5 rounded-xl transition disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-pink-500/25"
+              className="bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white font-semibold text-xs sm:text-sm px-6 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-pink-500/25 active:scale-98"
             >
               {loading ? (
                 <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <RefreshCw className="w-4 h-4 animate-spin" />
                   分析中...
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <Sparkles className="w-4 h-4" />
                   バズ分析
                 </>
               )}
@@ -272,11 +279,12 @@ export default function Home() {
           </form>
 
           {/* セーフティ・Bot制限インジケータ */}
-          <div className="flex items-center justify-between text-[11px] text-slate-500 px-2">
-            <span>🛡️ Bot検知回避: 待機ジッター & 15回/分リクエストガード有効</span>
-            <span>⚡ クライアント側Canvas肌色解析 (高速・サーバーレス対応)</span>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-[10px] sm:text-[11px] text-slate-500 px-1 gap-1">
+            <span>🛡️ Bot検知回避: 待機ジッター & 20回/分リクエストガード有効</span>
+            <span>📱 PWA対応: スマホのホーム画面に追加可能</span>
           </div>
         </div>
+
 
         {/* エラー表示 */}
         {error && (

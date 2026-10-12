@@ -69,6 +69,11 @@ export async function analyzeImageSkinTone(
           }
         }
 
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+
           // RGBからHSV（色相・彩度・明度）を計算
           const maxVal = Math.max(r, g, b);
           const minVal = Math.min(r, g, b);
