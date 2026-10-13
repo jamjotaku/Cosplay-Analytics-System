@@ -15,6 +15,7 @@ export interface SkinAnalysisResult {
   personPixels: number;
   skinPixels: number;
   canvasMaskDataUrl?: string; // 肌色部分をハイライトしたプレビュー画像
+  resizedBase64?: string;     // 軽量リサイズ済みBase64 (Gemini視覚AI転送用)
 }
 
 let selfieSegmentationPromise: Promise<any> | null = null;
@@ -277,6 +278,9 @@ export async function analyzeImageSkinTone(
           canvasMaskDataUrl = maskCanvas.toDataURL('image/png');
         }
 
+        // Gemini Vision AI 転送用の軽量 Base64 (JPEG, quality 0.85)
+        const resizedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+
         resolve({
           skinRatio,
           bodySkinRatio,
@@ -286,6 +290,7 @@ export async function analyzeImageSkinTone(
           personPixels: effectivePersonPixels,
           skinPixels,
           canvasMaskDataUrl,
+          resizedBase64,
         });
       } catch (err) {
         console.warn('Canvas skin analysis error:', err);
