@@ -4,7 +4,10 @@ export interface TweetMedia {
   previewUrl: string;
   width?: number;
   height?: number;
-  skinRatio?: number; // 0.0 - 1.0 (肌色比率)
+  skinRatio?: number; // 0.0 - 1.0 (画像全体に対する肌色比率)
+  bodySkinRatio?: number; // 0.0 - 1.0 (人物領域に対する純粋衣装露出度)
+  personRatio?: number; // 0.0 - 1.0 (画面に占める人物の割合)
+  framingTag?: '引き・全身' | 'ミドル・半身' | 'アップ・接写';
   isPeakSkin?: boolean; // 複数枚中最も露出が高いカット
   sensitiveEstimated?: boolean;
 }
@@ -38,8 +41,10 @@ export interface TweetAnalysisData {
   
   // Media items
   media: TweetMedia[];
-  averageSkinRatio: number; // 写真全体の平均肌色比率
-  peakSkinRatio: number;    // 最も露出が高い写真の肌色比率
+  averageSkinRatio: number;     // 画像全体の平均肌色比率
+  averageBodySkinRatio: number; // 人物領域に対する平均純粋衣装露出度 (Stage 1 AI)
+  peakSkinRatio: number;        // 最も露出が高い写真の肌色比率
+  framingTag: string;           // '引き・全身' | 'ミドル・半身' | 'アップ・接写'
   
   // Calculated Buzz Metrics
   engagementTotal: number;

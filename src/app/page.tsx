@@ -127,19 +127,30 @@ export default function Home() {
 
       const raw = resData.data;
 
-      // 2. ブラウザ側で画像の肌色比率を解析 (CORSプロキシ経由)
+      // 2. ブラウザ側で画像の肌色比率 ＆ AI人物セグメンテーションを解析
       let totalSkin = 0;
+      let totalBodySkin = 0;
       let photoCount = 0;
       let peakSkinRatio = 0;
       let peakIndex = -1;
+      let primaryFramingTag = 'ミドル・半身';
       const mediaWithSkin = [...raw.media];
 
       for (let i = 0; i < mediaWithSkin.length; i++) {
         if (mediaWithSkin[i].type === 'photo') {
           const skinResult = await analyzeImageSkinTone(mediaWithSkin[i].url, true);
           mediaWithSkin[i].skinRatio = skinResult.skinRatio;
+          mediaWithSkin[i].bodySkinRatio = skinResult.bodySkinRatio;
+          mediaWithSkin[i].personRatio = skinResult.personRatio;
+          mediaWithSkin[i].framingTag = skinResult.framingTag;
+          
           totalSkin += skinResult.skinRatio;
+          totalBodySkin += skinResult.bodySkinRatio;
           photoCount++;
+
+          if (i === 0) {
+            primaryFramingTag = skinResult.framingTag;
+          }
 
           if (skinResult.skinRatio > peakSkinRatio) {
             peakSkinRatio = skinResult.skinRatio;
@@ -153,6 +164,7 @@ export default function Home() {
       }
 
       const avgSkinRatio = photoCount > 0 ? Number((totalSkin / photoCount).toFixed(4)) : 0;
+      const avgBodySkinRatio = photoCount > 0 ? Number((totalBodySkin / photoCount).toFixed(4)) : 0;
 
       // 3. バズスコア & エンゲージメント指標を計算
       const buzz = calculateBuzzMetrics({
@@ -188,7 +200,9 @@ export default function Home() {
         possiblySensitive: raw.possiblySensitive,
         media: mediaWithSkin,
         averageSkinRatio: avgSkinRatio,
+        averageBodySkinRatio: avgBodySkinRatio,
         peakSkinRatio,
+        framingTag: primaryFramingTag,
         engagementTotal: buzz.engagementTotal,
         engagementRateFollowers: buzz.engagementRateFollowers,
         engagementRateViews: buzz.engagementRateViews,
@@ -323,10 +337,10 @@ export default function Home() {
               <h1 className="text-sm sm:text-base font-bold tracking-tight text-white flex items-center gap-1.5">
                 Cosplay Analytics
                 <span className="text-[9px] sm:text-[10px] bg-pink-500/20 text-pink-400 font-semibold px-1.5 py-0.5 rounded-full border border-pink-500/30">
-                  v1.2
+                  v2.0 (Stage 1 AI)
                 </span>
               </h1>
-              <p className="text-[10px] text-slate-400 hidden md:block">X画像ポストのバズ初速 & 肌色露出相関ダッシュボード</p>
+              <p className="text-[10px] text-slate-400 hidden md:block">AI人物分離・構図判定 ＆ X画像ポスト露出相関ダッシュボード</p>
             </div>
           </div>
 

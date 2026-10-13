@@ -132,26 +132,38 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ data }) 
           </p>
         </div>
 
-        {/* 肌色露出比率 */}
+        {/* 肌色露出比率 (Stage 1: AI人物切り抜きハイブリッド) */}
         <div className="bg-slate-950/60 border border-slate-800/80 p-3 sm:p-4 rounded-2xl col-span-2 sm:col-span-1 border-pink-500/20">
-          <div className="flex items-center gap-1.5 text-pink-400 text-[11px] sm:text-xs font-medium mb-1">
-            <Sparkles className="w-3.5 h-3.5" /> 肌色・露出率
-          </div>
-          <div className="flex items-baseline gap-2">
-            <p className="text-xl sm:text-2xl font-black text-pink-400">
-              {(data.averageSkinRatio * 100).toFixed(1)}%
-            </p>
-            {data.peakSkinRatio && data.peakSkinRatio > data.averageSkinRatio && (
-              <span className="text-[10px] text-rose-400 font-bold">
-                (最高: {(data.peakSkinRatio * 100).toFixed(1)}%)
+          <div className="flex items-center justify-between text-pink-400 text-[11px] sm:text-xs font-medium mb-1">
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" /> 純粋衣装露出度
+            </span>
+            {data.framingTag && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/15 text-pink-300 border border-pink-500/30 font-medium">
+                {data.framingTag}
               </span>
             )}
           </div>
-          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-1">
-            {data.possiblySensitive ? (
-              <span className="text-amber-400 font-semibold">⚠️ センシティブ判定有</span>
-            ) : (
-              '通常表示設定'
+          <div className="flex items-baseline gap-2">
+            <p className="text-xl sm:text-2xl font-black text-pink-400">
+              {((data.averageBodySkinRatio ?? data.averageSkinRatio) * 100).toFixed(1)}%
+            </p>
+            <span className="text-[10px] text-slate-400">
+              (全体比: {(data.averageSkinRatio * 100).toFixed(1)}%)
+            </span>
+          </div>
+          <p className="text-[10px] sm:text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+            <span>
+              {data.possiblySensitive ? (
+                <span className="text-amber-400 font-semibold">⚠️ センシティブ設定</span>
+              ) : (
+                '通常表示設定'
+              )}
+            </span>
+            {data.peakSkinRatio && data.peakSkinRatio > data.averageSkinRatio && (
+              <span className="text-rose-400 font-semibold text-[10px]">
+                最高: {(data.peakSkinRatio * 100).toFixed(1)}%
+              </span>
             )}
           </p>
         </div>
@@ -160,13 +172,16 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ data }) 
       {/* 画像プレビュー & 肌色解析マスク一覧 */}
       {data.media && data.media.length > 0 && (
         <div className="space-y-3 pt-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-xs sm:text-sm font-semibold text-slate-300 flex items-center gap-2">
               <ImageIcon className="w-4 h-4 text-pink-400" />
               添付メディア解析プレビュー ({data.media.length}枚)
+              <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                Stage 1: AI人物分離
+              </span>
             </h3>
             <span className="text-[10px] sm:text-xs text-slate-500">
-              ピンク色 = 検出された肌色エリア
+              純粋露出度 = 人物領域（服+体）に対する肌の比率
             </span>
           </div>
 
@@ -183,31 +198,55 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ data }) 
                   className="w-full h-full object-cover transition duration-300 group-hover:scale-105"
                 />
 
-                {/* ホバー情報 */}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col justify-end p-2.5 sm:p-3 text-xs text-white">
-                  <div className="bg-slate-950/80 p-2 rounded-lg backdrop-blur-md">
-                    <p className="text-pink-400 font-bold">
-                      肌色率: {m.skinRatio !== undefined ? (m.skinRatio * 100).toFixed(1) : (data.averageSkinRatio * 100).toFixed(1)}%
+                {/* ホバー詳細情報 (PC) */}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition duration-300 flex flex-col justify-end p-2.5 sm:p-3 text-xs text-white">
+                  <div className="bg-slate-950/90 p-2.5 rounded-xl backdrop-blur-md border border-slate-800 space-y-1">
+                    <p className="text-pink-400 font-bold flex justify-between">
+                      <span>純粋衣装露出:</span>
+                      <span>{m.bodySkinRatio !== undefined ? (m.bodySkinRatio * 100).toFixed(1) : ((m.skinRatio || 0) * 100).toFixed(1)}%</span>
                     </p>
+                    <p className="text-slate-300 text-[11px] flex justify-between">
+                      <span>画像全体比率:</span>
+                      <span>{m.skinRatio !== undefined ? (m.skinRatio * 100).toFixed(1) : '-'}%</span>
+                    </p>
+                    {m.framingTag && (
+                      <p className="text-slate-400 text-[10px] flex justify-between">
+                        <span>構図判定:</span>
+                        <span className="text-slate-200">{m.framingTag}</span>
+                      </p>
+                    )}
                     {m.width && m.height && (
-                      <p className="text-[10px] text-slate-300">
-                        解像度: {m.width} x {m.height}
+                      <p className="text-[10px] text-slate-400 flex justify-between">
+                        <span>解像度:</span>
+                        <span>{m.width} x {m.height}</span>
                       </p>
                     )}
                   </div>
                 </div>
 
-                {/* 左上インデックスバッジ */}
-                <div className="absolute top-2 left-2 bg-slate-950/75 backdrop-blur-md px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-medium text-pink-300 border border-pink-500/30">
+                {/* 左上: 画像インデックス */}
+                <div className="absolute top-2 left-2 bg-slate-950/80 backdrop-blur-md px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-medium text-pink-300 border border-pink-500/30">
                   画像 #{idx + 1}
                 </div>
 
-                {/* 最高露出バッジ */}
+                {/* 右上: 最高露出バッジ */}
                 {m.isPeakSkin && data.media.length > 1 && (
                   <div className="absolute top-2 right-2 bg-rose-600/90 backdrop-blur-md px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold text-white shadow-md shadow-rose-600/40">
                     🌟 最高露出
                   </div>
                 )}
+
+                {/* 常時表示の左下構図バッジ ＆ 右下純粋露出度 (スマホ対応) */}
+                <div className="absolute bottom-2 inset-x-2 flex items-center justify-between pointer-events-none group-hover:opacity-0 transition duration-200">
+                  {m.framingTag ? (
+                    <span className="bg-slate-950/85 backdrop-blur-md px-1.5 py-0.5 rounded text-[9px] font-medium text-slate-300 border border-slate-700/60">
+                      {m.framingTag}
+                    </span>
+                  ) : <span />}
+                  <span className="bg-pink-950/85 backdrop-blur-md px-1.5 py-0.5 rounded text-[9px] font-bold text-pink-300 border border-pink-500/30">
+                    露出 {m.bodySkinRatio !== undefined ? (m.bodySkinRatio * 100).toFixed(0) : ((m.skinRatio || 0) * 100).toFixed(0)}%
+                  </span>
+                </div>
               </div>
             ))}
           </div>
