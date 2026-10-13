@@ -76,4 +76,6 @@ export interface SheetRecord {
   buzzScore: number;
   buzzGrade: string;
   imageUrl: string;
+  bodySkinRatio?: number; // 純粋衣装露出度 (AI人物分離)
+  framingTag?: string;    // 構図タグ ('引き・全身' | 'ミドル・半身' | 'アップ・接写')
 }

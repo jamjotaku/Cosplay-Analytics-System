@@ -42,7 +42,7 @@ export default function Home() {
 
   // シート記録の絞り込み & ソート状態
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'newest' | 'likes' | 'skinRatio' | 'buzzScore' | 'impressions'>('newest');
+  const [sortBy, setSortBy] = useState<'newest' | 'likes' | 'bodySkinRatio' | 'skinRatio' | 'buzzScore' | 'impressions'>('newest');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
   // 公開CSV URL
@@ -241,6 +241,8 @@ export default function Home() {
         buzzScore: finalData.buzzScore,
         buzzGrade: finalData.buzzGrade,
         imageUrl: finalData.media[0]?.url || '',
+        bodySkinRatio: finalData.averageBodySkinRatio,
+        framingTag: finalData.framingTag,
       };
 
       // ローカル一覧を更新（既存があれば最新化、なければ先頭追加）
@@ -277,6 +279,8 @@ export default function Home() {
       buzzScore: analysisResult.buzzScore,
       buzzGrade: analysisResult.buzzGrade,
       imageUrl: analysisResult.media[0]?.url || '',
+      bodySkinRatio: analysisResult.averageBodySkinRatio,
+      framingTag: analysisResult.framingTag,
     };
 
     const row = formatAsCsvRow(record);
@@ -301,6 +305,9 @@ export default function Home() {
       switch (sortBy) {
         case 'likes':
           comp = a.likes - b.likes;
+          break;
+        case 'bodySkinRatio':
+          comp = (a.bodySkinRatio ?? a.skinRatio) - (b.bodySkinRatio ?? b.skinRatio);
           break;
         case 'skinRatio':
           comp = a.skinRatio - b.skinRatio;
@@ -560,7 +567,8 @@ export default function Home() {
                 >
                   <option value="newest">新着順</option>
                   <option value="likes">いいね数 順</option>
-                  <option value="skinRatio">肌色率 順</option>
+                  <option value="bodySkinRatio">純粋衣装露出 順 (AI)</option>
+                  <option value="skinRatio">画像全体肌色 順</option>
                   <option value="buzzScore">バズスコア 順</option>
                   <option value="impressions">表示回数 順</option>
                 </select>
@@ -586,6 +594,7 @@ export default function Home() {
                   <thead className="bg-slate-950/80 text-slate-400 uppercase tracking-wider border-b border-slate-800">
                     <tr>
                       <th className="p-3">画像</th>
+                      <th className="p-3">構図</th>
                       <th className="p-3">ユーザー</th>
                       <th className="p-3 cursor-pointer hover:text-pink-400 transition" onClick={() => { setSortBy('likes'); setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}>
                         いいね {sortBy === 'likes' && (sortOrder === 'desc' ? '↓' : '↑')}
@@ -594,14 +603,14 @@ export default function Home() {
                       <th className="p-3 cursor-pointer hover:text-pink-400 transition" onClick={() => { setSortBy('impressions'); setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}>
                         表示回数 {sortBy === 'impressions' && (sortOrder === 'desc' ? '↓' : '↑')}
                       </th>
-                      <th className="p-3">経過時間</th>
-                      <th className="p-3 cursor-pointer hover:text-pink-400 transition" onClick={() => { setSortBy('skinRatio'); setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}>
-                        肌色率 {sortBy === 'skinRatio' && (sortOrder === 'desc' ? '↓' : '↑')}
+                      <th className="p-3">経過</th>
+                      <th className="p-3 cursor-pointer hover:text-pink-400 transition" onClick={() => { setSortBy('bodySkinRatio'); setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}>
+                        純粋露出(全体) {sortBy === 'bodySkinRatio' && (sortOrder === 'desc' ? '↓' : '↑')}
                       </th>
                       <th className="p-3 cursor-pointer hover:text-pink-400 transition" onClick={() => { setSortBy('buzzScore'); setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}>
-                        バズスコア {sortBy === 'buzzScore' && (sortOrder === 'desc' ? '↓' : '↑')}
+                        スコア {sortBy === 'buzzScore' && (sortOrder === 'desc' ? '↓' : '↑')}
                       </th>
-                      <th className="p-3">評価</th>
+                      <th className="p-3">判定</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300">
@@ -618,7 +627,12 @@ export default function Home() {
                             <div className="w-10 h-10 bg-slate-800 rounded-lg" />
                           )}
                         </td>
-                        <td className="p-3 font-medium text-white">
+                        <td className="p-3 whitespace-nowrap">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                            {r.framingTag || 'ミドル'}
+                          </span>
+                        </td>
+                        <td className="p-3 font-medium text-white max-w-[120px] truncate">
                           <a
                             href={r.tweetUrl}
                             target="_blank"
@@ -632,7 +646,16 @@ export default function Home() {
                         <td className="p-3 text-emerald-400">{(r.retweets ?? 0).toLocaleString()}</td>
                         <td className="p-3 text-blue-400">{r.impressions > 0 ? r.impressions.toLocaleString() : '-'}</td>
                         <td className="p-3">{r.hoursElapsed ?? 1}h</td>
-                        <td className="p-3 text-pink-400 font-bold">{((r.skinRatio ?? 0) * 100).toFixed(1)}%</td>
+                        <td className="p-3">
+                          <div className="flex flex-col">
+                            <span className="text-pink-400 font-bold">
+                              {(((r.bodySkinRatio ?? r.skinRatio) ?? 0) * 100).toFixed(1)}%
+                            </span>
+                            <span className="text-[9px] text-slate-500">
+                              (全体: {((r.skinRatio ?? 0) * 100).toFixed(1)}%)
+                            </span>
+                          </div>
+                        </td>
                         <td className="p-3 font-bold text-amber-400">{r.buzzScore ?? 0}点</td>
                         <td className="p-3">
                           <span className="px-2 py-0.5 rounded-md font-black bg-slate-800 text-slate-200">

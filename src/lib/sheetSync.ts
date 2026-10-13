@@ -52,6 +52,12 @@ export async function fetchSheetData(csvUrl: string): Promise<SheetRecord[]> {
       const tweetUrl = row['tweetUrl'] || row['Tweet URL'] || row['URL'] || row['ツイートURL'] || '';
       if (!tweetUrl) continue;
 
+      const skinRatio = cleanSkinRatio(row['skinRatio'] ?? row['Skin Ratio'] ?? row['肌色比率']);
+      const bodySkinRatio = row['bodySkinRatio'] || row['純粋露出度']
+        ? cleanSkinRatio(row['bodySkinRatio'] ?? row['純粋露出度'])
+        : skinRatio;
+      const framingTag = row['framingTag'] || row['構図'] || (skinRatio > 0.35 ? 'アップ・接写' : skinRatio < 0.12 ? '引き・全身' : 'ミドル・半身');
+
       records.push({
         timestamp: row['timestamp'] || row['Timestamp'] || row['取得日時'] || new Date().toISOString(),
         tweetUrl,
@@ -61,10 +67,12 @@ export async function fetchSheetData(csvUrl: string): Promise<SheetRecord[]> {
         retweets: cleanNumber(row['retweets'] ?? row['Retweets'] ?? row['RP数']),
         impressions: cleanNumber(row['impressions'] ?? row['Impressions'] ?? row['インプレッション']),
         hoursElapsed: cleanNumber(row['hoursElapsed'] ?? row['Hours Elapsed'] ?? row['経過時間'], 1),
-        skinRatio: cleanSkinRatio(row['skinRatio'] ?? row['Skin Ratio'] ?? row['肌色比率']),
+        skinRatio,
         buzzScore: cleanNumber(row['buzzScore'] ?? row['Buzz Score'] ?? row['バズスコア']),
         buzzGrade: row['buzzGrade'] || row['Buzz Grade'] || row['評価'] || 'C',
         imageUrl: row['imageUrl'] || row['Image URL'] || row['画像URL'] || '',
+        bodySkinRatio,
+        framingTag,
       });
     }
 
@@ -92,7 +100,10 @@ export function formatAsCsvRow(record: SheetRecord): string {
     record.buzzScore,
     `"${record.buzzGrade}"`,
     `"${record.imageUrl}"`,
+    record.bodySkinRatio ?? record.skinRatio,
+    `"${record.framingTag ?? 'ミドル・半身'}"`,
   ].join(',');
 }
 
-export const CSV_HEADER = 'timestamp,tweetUrl,author,followers,likes,retweets,impressions,hoursElapsed,skinRatio,buzzScore,buzzGrade,imageUrl';
+export const CSV_HEADER = 'timestamp,tweetUrl,author,followers,likes,retweets,impressions,hoursElapsed,skinRatio,buzzScore,buzzGrade,imageUrl,bodySkinRatio,framingTag';
+
