@@ -177,8 +177,8 @@ export async function analyzeImageSkinTone(
           const g = data[i + 1];
           const b = data[i + 2];
 
-          // 人物判定 (MediaPipe マスクがある場合は赤チャネル値 > 80 を人物と判定)
-          const isPerson = personMaskData ? personMaskData[i] > 80 : true;
+          // 人物判定 (MediaPipe マスクがある場合は赤チャネル値 > 60 を人物と判定)
+          const isPerson = personMaskData ? personMaskData[i] > 60 : true;
           if (isPerson) {
             personPixels++;
           }
@@ -204,20 +204,25 @@ export async function analyzeImageSkinTone(
           const saturation = maxVal === 0 ? 0 : delta / maxVal;
           const value = maxVal / 255;
 
-          // 肌色色相条件: 0°〜25° または 335°〜360° (黄色・ゴールド衣装・金髪ウィッグを排除)
-          const isSkinHue = (hue >= 0 && hue <= 25) || (hue >= 335 && hue <= 360);
-          const isHsvSkin = isSkinHue && saturation >= 0.15 && saturation <= 0.75 && value >= 0.25 && value <= 0.98;
+          // --- 多次元・高精度肌色判定エンジン ---
+          // 1. 通常肌・ピーチ肌・アイボリーベージュ (自然光・暖色系)
+          const isNormalSkinHue = (hue >= 0 && hue <= 52) || (hue >= 325 && hue <= 360);
+          const isNormalSkin = isNormalSkinHue && saturation >= 0.08 && saturation <= 0.80 && value >= 0.25 && value <= 0.99 && (r >= g);
 
-          // YCrCb色空間判定
+          // 2. 美白肌・陶器肌・クールトーン照明・スタジオ白飛び直前肌 (コスプレ美白加工・青白照明対応)
+          // 彩度が極端に低い (0.015〜0.25) が明度が高い肌領域を確実にキャッチ
+          const isFairSkin = value >= 0.40 && value <= 0.99 && saturation >= 0.015 && saturation < 0.25 &&
+                             minVal >= 70 && (r >= b - 18) && (r >= g - 18) &&
+                             !(saturation > 0.12 && hue >= 180 && hue <= 250);
+
+          // 3. YCrCb色空間判定 (照明や露出変化に頑健)
           const yVal = 0.299 * r + 0.587 * g + 0.114 * b;
           const cr = (r - yVal) * 0.713 + 128;
           const cb = (b - yVal) * 0.564 + 128;
-          const isYCrCbSkin = cr >= 135 && cr <= 170 && cb >= 85 && cb <= 125;
+          const isYCrCbSkin = cr >= 126 && cr <= 175 && cb >= 80 && cb <= 135 && value >= 0.25 && value <= 0.99;
 
-          // 厳格RGB条件
-          const isStrictRgbSkin = r > g && g > b && (r - g) >= 20 && (r - b) >= 30;
-
-          const isSkin = isHsvSkin && (isYCrCbSkin || isStrictRgbSkin);
+          // 総合肌色判定
+          const isSkin = isNormalSkin || isFairSkin || (isYCrCbSkin && (isNormalSkinHue || saturation < 0.15));
 
           if (isSkin) {
             skinPixels++;
