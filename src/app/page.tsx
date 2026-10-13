@@ -414,12 +414,12 @@ export default function Home() {
                             @{r.author}
                           </a>
                         </td>
-                        <td className="p-3 font-semibold text-rose-400">{r.likes.toLocaleString()}</td>
-                        <td className="p-3 text-emerald-400">{r.retweets.toLocaleString()}</td>
-                        <td className="p-3 text-blue-400">{r.impressions.toLocaleString()}</td>
-                        <td className="p-3">{r.hoursElapsed}h</td>
-                        <td className="p-3 text-pink-400 font-bold">{(r.skinRatio * 100).toFixed(1)}%</td>
-                        <td className="p-3 font-bold text-amber-400">{r.buzzScore}点</td>
+                        <td className="p-3 font-semibold text-rose-400">{(r.likes ?? 0).toLocaleString()}</td>
+                        <td className="p-3 text-emerald-400">{(r.retweets ?? 0).toLocaleString()}</td>
+                        <td className="p-3 text-blue-400">{r.impressions > 0 ? r.impressions.toLocaleString() : '-'}</td>
+                        <td className="p-3">{r.hoursElapsed ?? 1}h</td>
+                        <td className="p-3 text-pink-400 font-bold">{((r.skinRatio ?? 0) * 100).toFixed(1)}%</td>
+                        <td className="p-3 font-bold text-amber-400">{r.buzzScore ?? 0}点</td>
                         <td className="p-3">
                           <span className="px-2 py-0.5 rounded-md font-black bg-slate-800 text-slate-200">
                             {r.buzzGrade}

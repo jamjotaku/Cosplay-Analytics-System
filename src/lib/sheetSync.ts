@@ -1,6 +1,26 @@
 import Papa from 'papaparse';
 import { SheetRecord } from '@/types/tweet';
 
+function cleanNumber(val: any, fallback = 0): number {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val === 'number') return isNaN(val) ? fallback : val;
+  const cleaned = String(val).replace(/,/g, '').trim();
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? fallback : parsed;
+}
+
+function cleanSkinRatio(val: any): number {
+  if (val === null || val === undefined) return 0;
+  const str = String(val).trim();
+  if (str.endsWith('%')) {
+    const parsed = parseFloat(str.replace('%', ''));
+    return isNaN(parsed) ? 0 : Number((parsed / 100).toFixed(4));
+  }
+  const parsed = parseFloat(str.replace(/,/g, ''));
+  if (isNaN(parsed)) return 0;
+  return parsed > 1 ? Number((parsed / 100).toFixed(4)) : Number(parsed.toFixed(4));
+}
+
 /**
  * 公開されたGoogleスプレッドシートのCSVデータを取得・パース
  */
@@ -36,13 +56,13 @@ export async function fetchSheetData(csvUrl: string): Promise<SheetRecord[]> {
         timestamp: row['timestamp'] || row['Timestamp'] || row['取得日時'] || new Date().toISOString(),
         tweetUrl,
         author: row['author'] || row['Author'] || row['ユーザー名'] || '',
-        followers: Number(row['followers'] || row['Followers'] || row['フォロワー数'] || 0),
-        likes: Number(row['likes'] || row['Likes'] || row['いいね数'] || 0),
-        retweets: Number(row['retweets'] || row['Retweets'] || row['RP数'] || 0),
-        impressions: Number(row['impressions'] || row['Impressions'] || row['インプレッション'] || 0),
-        hoursElapsed: Number(row['hoursElapsed'] || row['Hours Elapsed'] || row['経過時間'] || 1),
-        skinRatio: Number(row['skinRatio'] || row['Skin Ratio'] || row['肌色比率'] || 0),
-        buzzScore: Number(row['buzzScore'] || row['Buzz Score'] || row['バズスコア'] || 0),
+        followers: cleanNumber(row['followers'] ?? row['Followers'] ?? row['フォロワー数']),
+        likes: cleanNumber(row['likes'] ?? row['Likes'] ?? row['いいね数']),
+        retweets: cleanNumber(row['retweets'] ?? row['Retweets'] ?? row['RP数']),
+        impressions: cleanNumber(row['impressions'] ?? row['Impressions'] ?? row['インプレッション']),
+        hoursElapsed: cleanNumber(row['hoursElapsed'] ?? row['Hours Elapsed'] ?? row['経過時間'], 1),
+        skinRatio: cleanSkinRatio(row['skinRatio'] ?? row['Skin Ratio'] ?? row['肌色比率']),
+        buzzScore: cleanNumber(row['buzzScore'] ?? row['Buzz Score'] ?? row['バズスコア']),
         buzzGrade: row['buzzGrade'] || row['Buzz Grade'] || row['評価'] || 'C',
         imageUrl: row['imageUrl'] || row['Image URL'] || row['画像URL'] || '',
       });
