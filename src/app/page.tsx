@@ -41,6 +41,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'analyzer' | 'correlation' | 'history'>('analyzer');
   const [copiedCsv, setCopiedCsv] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
+  const [isAiReanalyzing, setIsAiReanalyzing] = useState(false);
 
   // シート記録の絞り込み & ソート状態
   const [searchQuery, setSearchQuery] = useState('');
@@ -358,6 +359,56 @@ export default function Home() {
     setTimeout(() => setCopiedShare(false), 2500);
   };
 
+  // AI視覚判定の手動再実行 (一時的な混雑やクォータエラーでフォールバックした際のリトライ用)
+  const handleReanalyzeAi = async () => {
+    if (!analysisResult || !analysisResult.media || analysisResult.media.length === 0 || isAiReanalyzing) return;
+    setIsAiReanalyzing(true);
+    try {
+      const mediaItem = analysisResult.media[0];
+      const skinRes = await analyzeImageSkinTone(mediaItem.url, true);
+      const base64 = skinRes.resizedBase64;
+      if (!base64) {
+        alert('画像の読み込みに失敗しました。');
+        return;
+      }
+
+      const geminiRes = await fetch('/api/analyze-exposure', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64, imageUrl: mediaItem.url }),
+      }).then((r) => r.json());
+
+      if (geminiRes?.success) {
+        setAnalysisResult((prev) => {
+          if (!prev) return null;
+          const updatedMedia = [...prev.media];
+          if (updatedMedia[0]) {
+            updatedMedia[0].bodySkinRatio = geminiRes.bodySkinRatio;
+            updatedMedia[0].skinRatio = geminiRes.skinRatio;
+            updatedMedia[0].framingTag = geminiRes.framingTag;
+            updatedMedia[0].aiReasoning = geminiRes.reasoning;
+            updatedMedia[0].isAiAnalyzed = true;
+          }
+          return {
+            ...prev,
+            media: updatedMedia,
+            averageBodySkinRatio: geminiRes.bodySkinRatio,
+            framingTag: geminiRes.framingTag,
+            aiReasoning: geminiRes.reasoning,
+            isAiAnalyzed: true,
+          };
+        });
+      } else {
+        alert('現在Gemini APIが混雑中です。数秒置いて再度「AIで再判定する」を押してください。');
+      }
+    } catch (err: any) {
+      console.warn('AI Reanalyze error:', err);
+      alert('AI再判定中にエラーが発生しました。');
+    } finally {
+      setIsAiReanalyzing(false);
+    }
+  };
+
   // 蓄積全レコードのUTF-8 BOM付きCSV一括ダウンロード
   const downloadAllCsv = () => {
     if (filteredAndSortedRecords.length === 0) return;
@@ -585,7 +636,11 @@ export default function Home() {
                     </a>
                   </div>
                 </div>
-                <AnalysisResultCard data={analysisResult} />
+                <AnalysisResultCard
+                  data={analysisResult}
+                  onReanalyzeAi={handleReanalyzeAi}
+                  isAiLoading={isAiReanalyzing}
+                />
               </div>
             ) : (
               <div className="text-center py-16 border border-dashed border-slate-800 rounded-3xl space-y-3">

@@ -6,9 +6,11 @@ import { Clock, Heart, Repeat, Eye, TrendingUp, Sparkles, Image as ImageIcon, Bo
 
 interface AnalysisResultCardProps {
   data: TweetAnalysisData;
+  onReanalyzeAi?: () => void;
+  isAiLoading?: boolean;
 }
 
-export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ data }) => {
+export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ data, onReanalyzeAi, isAiLoading }) => {
   const gradeColors: Record<string, { bg: string; text: string; border: string }> = {
     SSS: { bg: 'bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600', text: 'text-amber-300', border: 'border-amber-400' },
     S: { bg: 'bg-rose-500/20', text: 'text-rose-400', border: 'border-rose-500/50' },
@@ -176,8 +178,8 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ data }) 
         </div>
       </div>
 
-      {/* Gemini 視覚AI 判定根拠バナー */}
-      {data.aiReasoning && (
+      {/* Gemini 視覚AI 判定根拠バナー または 再判定案内 */}
+      {data.aiReasoning ? (
         <div className="bg-gradient-to-r from-purple-950/30 via-pink-950/20 to-slate-900 border border-purple-500/30 p-3.5 sm:p-4 rounded-2xl flex items-start gap-3 text-xs">
           <div className="p-1.5 bg-purple-500/20 rounded-xl text-purple-300 shrink-0 mt-0.5">
             <Sparkles className="w-4 h-4 text-purple-300" />
@@ -195,6 +197,23 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ data }) 
               {data.aiReasoning}
             </p>
           </div>
+        </div>
+      ) : (
+        <div className="bg-slate-950/60 border border-slate-800/80 p-3 sm:p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-slate-400 text-[11px]">
+            <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+            <span>AI一時混雑等によりローカル色彩で判定されています。AI視覚解析を再試行できます</span>
+          </div>
+          {onReanalyzeAi && (
+            <button
+              onClick={onReanalyzeAi}
+              disabled={isAiLoading}
+              className="px-3.5 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 border border-purple-500/40 rounded-xl text-xs font-semibold shrink-0 transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-lg shadow-purple-950/30"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              {isAiLoading ? 'AI解析中...' : 'AIで再判定する'}
+            </button>
+          )}
         </div>
       )}
 
