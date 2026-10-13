@@ -1,4 +1,4 @@
-import { TweetAnalysisData } from '@/types/tweet';
+import { TweetAnalysisData, AuthorTier } from '@/types/tweet';
 
 /**
  * 取得したメタデータおよび画像解析結果からバズ度・エンゲージメント指標を多角的に算出
@@ -13,13 +13,17 @@ export function calculateBuzzMetrics(params: {
   impressions: number;
   possiblySensitive: boolean;
   averageSkinRatio: number;
+  peakSkinRatio?: number;
 }): {
   hoursElapsed: number;
+  postTiming: string;
+  authorTier: AuthorTier;
   engagementTotal: number;
   engagementRateFollowers: number;
   engagementRateViews: number;
   velocityHourly: number;
   spreadRatio: number;
+  bookmarkRatio: number;
   buzzScore: number;
   buzzGrade: TweetAnalysisData['buzzGrade'];
   buzzProbability: string;
@@ -32,7 +36,6 @@ export function calculateBuzzMetrics(params: {
     replies,
     bookmarks,
     impressions,
-    averageSkinRatio,
   } = params;
 
   // 1. 経過時間計算 (最低0.2時間 = 12分としてゼロ除算回避)
@@ -41,48 +44,72 @@ export function calculateBuzzMetrics(params: {
   const diffHours = (now.getTime() - createdDate.getTime()) / (1000 * 60 * 60);
   const hoursElapsed = Math.max(0.2, Number(diffHours.toFixed(2)));
 
-  // 2. 総エンゲージメント数
+  // 2. 投稿タイミングのフォーマット (JST 曜日・時刻)
+  const daysJa = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜'];
+  const postTiming = `${daysJa[createdDate.getDay()]} ${String(createdDate.getHours()).padStart(2, '0')}:${String(createdDate.getMinutes()).padStart(2, '0')}`;
+
+  // 3. アカウント規模（Tier）の判定
+  let authorTier: AuthorTier = 'ナノ (<5K)';
+  if (authorFollowers >= 100000) {
+    authorTier = 'メガ (>100K)';
+  } else if (authorFollowers >= 20000) {
+    authorTier = 'ミドル (20K-100K)';
+  } else if (authorFollowers >= 5000) {
+    authorTier = 'マイクロ (5K-20K)';
+  }
+
+  // 4. 総エンゲージメント数
   const engagementTotal = likes + retweets + replies + bookmarks;
 
-  // 3. 1時間あたりのいいね獲得初速 (Velocity)
+  // 5. 1時間あたりのいいね獲得初速 (Velocity)
   const velocityHourly = Number((likes / hoursElapsed).toFixed(1));
 
-  // 4. フォロワー比エンゲージメント率 (%)
+  // 6. フォロワー比エンゲージメント率 (%)
   const effectiveFollowers = Math.max(1, authorFollowers);
   const engagementRateFollowers = Number(
     ((engagementTotal / effectiveFollowers) * 100).toFixed(2)
   );
 
-  // 5. インプレッション比エンゲージメント率 (%)
+  // 7. インプレッション比エンゲージメント率 (%)
   const effectiveImpressions = Math.max(1, impressions || likes * 10);
   const engagementRateViews = Number(
     ((engagementTotal / effectiveImpressions) * 100).toFixed(2)
   );
 
-  // 6. 拡散係数 (RP比率 = リポスト数 / いいね数)
-  // 一般的にコスプレ等ではRP/Likeが0.1〜0.15を超えると外部タイムラインへ激しく拡散中
+  // 8. 拡散係数 (RP比率 = リポスト数 / いいね数)
   const spreadRatio = likes > 0 ? Number((retweets / likes).toFixed(3)) : 0;
 
-  // 7. 総合バズスコア (0〜100点)
-  // 重み付け:
-  // - 初速 (時速500いいねで満点40点)
-  // - インプレッション効率 (3%で満点25点)
-  // - 拡散係数 (0.15以上で満点20点)
-  // - フォロワー超過率 (フォロワーの10%超で満点15点)
-  let scoreVelocity = Math.min(40, (velocityHourly / 500) * 40);
-  let scoreViews = Math.min(25, (engagementRateViews / 3.0) * 25);
-  let scoreSpread = Math.min(20, (spreadRatio / 0.15) * 20);
-  let scoreFollower = Math.min(15, (engagementRateFollowers / 10.0) * 15);
+  // 9. 保存価値比率 (ブックマーク比率 = ブックマーク数 / いいね数)
+  const bookmarkRatio = likes > 0 ? Number((bookmarks / likes).toFixed(3)) : 0;
 
-  // 初速ボーナス: 投稿から3時間以内で時速100いいね以上なら初速ボーナス加算
+  // 10. 総合バズスコア (0〜100点)
+  // 基本重み付け:
+  // - 初速 (時速400いいねで満点35点)
+  // - インプレッション効率 (3%で満点20点)
+  // - 拡散係数 (0.12以上で満点20点)
+  // - フォロワー超過率 (規模別動的計算で満点15点)
+  // - ブックマーク評価 (保存率5%で満点10点 - X最新アルゴリズム対応)
+  let scoreVelocity = Math.min(35, (velocityHourly / 400) * 35);
+  let scoreViews = Math.min(20, (engagementRateViews / 3.0) * 20);
+  let scoreSpread = Math.min(20, (spreadRatio / 0.12) * 20);
+  
+  // フォロワー規模に応じた公平な評価:
+  // ナノ層(<5k)はフォロワーの5%で満点、メガ層(>100k)は2%で満点
+  const followerBenchmark = authorFollowers < 5000 ? 5.0 : authorFollowers < 20000 ? 4.0 : 2.5;
+  let scoreFollower = Math.min(15, (engagementRateFollowers / followerBenchmark) * 15);
+
+  // ブックマーク加点:
+  let scoreBookmark = Math.min(10, (bookmarkRatio / 0.05) * 10);
+
+  // 初速ブーストボーナス: 投稿から3時間以内で時速100いいね以上なら初速を1.2倍
   if (hoursElapsed <= 3 && velocityHourly >= 100) {
-    scoreVelocity = Math.min(40, scoreVelocity * 1.25);
+    scoreVelocity = Math.min(35, scoreVelocity * 1.2);
   }
 
-  const rawScore = scoreVelocity + scoreViews + scoreSpread + scoreFollower;
+  const rawScore = scoreVelocity + scoreViews + scoreSpread + scoreFollower + scoreBookmark;
   const buzzScore = Math.min(100, Math.max(0, Math.round(rawScore)));
 
-  // 8. グレード判定 & バズ可能性テキスト
+  // 11. グレード判定 & バズ可能性テキスト
   let buzzGrade: TweetAnalysisData['buzzGrade'] = 'C';
   let buzzProbability = '通常推移';
 
@@ -105,11 +132,14 @@ export function calculateBuzzMetrics(params: {
 
   return {
     hoursElapsed,
+    postTiming,
+    authorTier,
     engagementTotal,
     engagementRateFollowers,
     engagementRateViews,
     velocityHourly,
     spreadRatio,
+    bookmarkRatio,
     buzzScore,
     buzzGrade,
     buzzProbability,

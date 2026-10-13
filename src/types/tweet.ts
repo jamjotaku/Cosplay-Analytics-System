@@ -5,13 +5,17 @@ export interface TweetMedia {
   width?: number;
   height?: number;
   skinRatio?: number; // 0.0 - 1.0 (肌色比率)
+  isPeakSkin?: boolean; // 複数枚中最も露出が高いカット
   sensitiveEstimated?: boolean;
 }
+
+export type AuthorTier = 'ナノ (<5K)' | 'マイクロ (5K-20K)' | 'ミドル (20K-100K)' | 'メガ (>100K)';
 
 export interface TweetAnalysisData {
   tweetId: string;
   tweetUrl: string;
   createdAt: string;
+  postTiming: string; // 例: "金曜 21:30"
   hoursElapsed: number;
   
   // Author metrics
@@ -19,6 +23,7 @@ export interface TweetAnalysisData {
   authorUsername: string;
   authorAvatar: string;
   authorFollowers: number;
+  authorTier: AuthorTier;
   
   // Tweet metrics
   text: string;
@@ -34,6 +39,7 @@ export interface TweetAnalysisData {
   // Media items
   media: TweetMedia[];
   averageSkinRatio: number; // 写真全体の平均肌色比率
+  peakSkinRatio: number;    // 最も露出が高い写真の肌色比率
   
   // Calculated Buzz Metrics
   engagementTotal: number;
@@ -41,6 +47,7 @@ export interface TweetAnalysisData {
   engagementRateViews: number;     // (Likes+RP+Bookmarks) / Impressions * 100
   velocityHourly: number;          // Likes / HoursElapsed
   spreadRatio: number;             // RP / Likes (拡散意欲比率)
+  bookmarkRatio: number;           // Bookmarks / Likes (保存・鑑賞価値比率)
   
   // Buzz Score & Grade
   buzzScore: number;               // 0 - 100

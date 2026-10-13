@@ -1,11 +1,26 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Sparkles, Search, Table, RefreshCw, Copy, Check, ExternalLink, BarChart3, AlertCircle, Download } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Sparkles,
+  Search,
+  Table,
+  RefreshCw,
+  Copy,
+  Check,
+  ExternalLink,
+  BarChart3,
+  AlertCircle,
+  Download,
+  ClipboardPaste,
+  ArrowUpDown,
+  Filter,
+  CheckCircle2,
+} from 'lucide-react';
 import { TweetAnalysisData, SheetRecord } from '@/types/tweet';
 import { analyzeImageSkinTone } from '@/lib/skinToneDetector';
 import { calculateBuzzMetrics } from '@/lib/buzzScorer';
-import { fetchSheetData, formatAsCsvRow, CSV_HEADER } from '@/lib/sheetSync';
+import { fetchSheetData, formatAsCsvRow } from '@/lib/sheetSync';
 import { AnalysisResultCard } from '@/components/AnalysisResultCard';
 import { CorrelationAnalysis } from '@/components/CorrelationAnalysis';
 
@@ -14,6 +29,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<TweetAnalysisData | null>(null);
+  const [existingRecordNotice, setExistingRecordNotice] = useState<string | null>(null);
 
   // PWA インストールプロンプト (Android / PC Chrome / Edge)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -23,6 +39,11 @@ export default function Home() {
   const [sheetLoading, setSheetLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'analyzer' | 'correlation' | 'history'>('analyzer');
   const [copiedCsv, setCopiedCsv] = useState(false);
+
+  // シート記録の絞り込み & ソート状態
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'newest' | 'likes' | 'skinRatio' | 'buzzScore' | 'impressions'>('newest');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
   // 公開CSV URL
   const sheetCsvUrl = process.env.NEXT_PUBLIC_SHEET_CSV_URL || '';
@@ -68,6 +89,20 @@ export default function Home() {
     }
   };
 
+  // クリップボードからのワンタップ貼り付け
+  const handlePasteClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && (text.includes('twitter.com') || text.includes('x.com'))) {
+        setTweetUrl(text.trim());
+      } else if (text) {
+        setTweetUrl(text.trim());
+      }
+    } catch (err) {
+      console.warn('Clipboard read error:', err);
+    }
+  };
+
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tweetUrl.trim()) return;
@@ -75,6 +110,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setAnalysisResult(null);
+    setExistingRecordNotice(null);
 
     try {
       // 1. サーバーサイドでXのメタデータを取得
@@ -94,6 +130,8 @@ export default function Home() {
       // 2. ブラウザ側で画像の肌色比率を解析 (CORSプロキシ経由)
       let totalSkin = 0;
       let photoCount = 0;
+      let peakSkinRatio = 0;
+      let peakIndex = -1;
       const mediaWithSkin = [...raw.media];
 
       for (let i = 0; i < mediaWithSkin.length; i++) {
@@ -102,7 +140,16 @@ export default function Home() {
           mediaWithSkin[i].skinRatio = skinResult.skinRatio;
           totalSkin += skinResult.skinRatio;
           photoCount++;
+
+          if (skinResult.skinRatio > peakSkinRatio) {
+            peakSkinRatio = skinResult.skinRatio;
+            peakIndex = i;
+          }
         }
+      }
+
+      if (peakIndex >= 0) {
+        mediaWithSkin[peakIndex].isPeakSkin = true;
       }
 
       const avgSkinRatio = photoCount > 0 ? Number((totalSkin / photoCount).toFixed(4)) : 0;
@@ -114,35 +161,40 @@ export default function Home() {
         likes: raw.likes,
         retweets: raw.retweets,
         replies: raw.replies,
-        bookmarks: raw.bookmarks,
+        bookmarks: raw.bookmarks || 0,
         impressions: raw.impressions,
         possiblySensitive: raw.possiblySensitive,
         averageSkinRatio: avgSkinRatio,
+        peakSkinRatio,
       });
 
       const finalData: TweetAnalysisData = {
         tweetId: raw.tweetId,
         tweetUrl: raw.tweetUrl,
         createdAt: raw.createdAt,
+        postTiming: buzz.postTiming,
         hoursElapsed: buzz.hoursElapsed,
         authorName: raw.authorName,
         authorUsername: raw.authorUsername,
         authorAvatar: raw.authorAvatar,
         authorFollowers: raw.authorFollowers,
+        authorTier: buzz.authorTier,
         text: raw.text,
         likes: raw.likes,
         retweets: raw.retweets,
         replies: raw.replies,
-        bookmarks: raw.bookmarks,
+        bookmarks: raw.bookmarks || 0,
         impressions: raw.impressions,
         possiblySensitive: raw.possiblySensitive,
         media: mediaWithSkin,
         averageSkinRatio: avgSkinRatio,
+        peakSkinRatio,
         engagementTotal: buzz.engagementTotal,
         engagementRateFollowers: buzz.engagementRateFollowers,
         engagementRateViews: buzz.engagementRateViews,
         velocityHourly: buzz.velocityHourly,
         spreadRatio: buzz.spreadRatio,
+        bookmarkRatio: buzz.bookmarkRatio,
         buzzScore: buzz.buzzScore,
         buzzGrade: buzz.buzzGrade,
         buzzProbability: buzz.buzzProbability,
@@ -151,7 +203,17 @@ export default function Home() {
 
       setAnalysisResult(finalData);
 
-      // 一時的なローカルレコード追加（即座に相関チャートへ反映）
+      // 重複チェック (過去に同じツイートが記録されているか確認)
+      const existing = sheetRecords.find(
+        (r) => r.tweetUrl.includes(raw.tweetId) || raw.tweetUrl.includes(r.tweetUrl)
+      );
+      if (existing) {
+        setExistingRecordNotice(
+          `このポストは既にシートに記録されています (前回の記録: ${existing.likes.toLocaleString()}いいね / ${existing.buzzGrade}判定)`
+        );
+      }
+
+      // レコード作成
       const newRecord: SheetRecord = {
         timestamp: finalData.analyzedAt,
         tweetUrl: finalData.tweetUrl,
@@ -167,7 +229,11 @@ export default function Home() {
         imageUrl: finalData.media[0]?.url || '',
       };
 
-      setSheetRecords((prev) => [newRecord, ...prev]);
+      // ローカル一覧を更新（既存があれば最新化、なければ先頭追加）
+      setSheetRecords((prev) => {
+        const filtered = prev.filter((r) => !r.tweetUrl.includes(raw.tweetId));
+        return [newRecord, ...filtered];
+      });
 
       // Googleスプレッドシートへ自動同期 (GAS Webhook)
       fetch('/api/sheet-sync', {
@@ -205,6 +271,43 @@ export default function Home() {
     setTimeout(() => setCopiedCsv(false), 2500);
   };
 
+  // シート記録の絞り込み & ソートロジック
+  const filteredAndSortedRecords = useMemo(() => {
+    let result = [...sheetRecords];
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter(
+        (r) => r.author.toLowerCase().includes(q) || r.tweetUrl.toLowerCase().includes(q)
+      );
+    }
+
+    result.sort((a, b) => {
+      let comp = 0;
+      switch (sortBy) {
+        case 'likes':
+          comp = a.likes - b.likes;
+          break;
+        case 'skinRatio':
+          comp = a.skinRatio - b.skinRatio;
+          break;
+        case 'buzzScore':
+          comp = a.buzzScore - b.buzzScore;
+          break;
+        case 'impressions':
+          comp = a.impressions - b.impressions;
+          break;
+        case 'newest':
+        default:
+          comp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+          break;
+      }
+      return sortOrder === 'desc' ? -comp : comp;
+    });
+
+    return result;
+  }, [sheetRecords, searchQuery, sortBy, sortOrder]);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-pink-500 selection:text-white">
       {/* ナビゲーションバー (iPhoneノッチ・ステータスバー回避) */}
@@ -216,19 +319,18 @@ export default function Home() {
               alt="Cosplay Analytics"
               className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl object-contain bg-slate-900 border border-slate-700 shadow-md shadow-pink-500/20 shrink-0"
             />
-
             <div>
               <h1 className="text-sm sm:text-base font-bold tracking-tight text-white flex items-center gap-1.5">
                 Cosplay Analytics
                 <span className="text-[9px] sm:text-[10px] bg-pink-500/20 text-pink-400 font-semibold px-1.5 py-0.5 rounded-full border border-pink-500/30">
-                  v1.0
+                  v1.2
                 </span>
               </h1>
               <p className="text-[10px] text-slate-400 hidden md:block">X画像ポストのバズ初速 & 肌色露出相関ダッシュボード</p>
             </div>
           </div>
 
-          {/* タブ切り替え (スマホでも押しやすいタッチ最適化) */}
+          {/* タブ切り替え */}
           <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs shrink-0">
             <button
               onClick={() => setActiveTab('analyzer')}
@@ -268,7 +370,7 @@ export default function Home() {
       </header>
 
       {/* メインコンテンツ */}
-      <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-4 py-6 sm:py-8 w-full space-y-6 sm:space-y-8">
+      <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-4 py-5 sm:py-8 w-full space-y-6 sm:space-y-8">
         {/* 入力検索バー */}
         <div className="max-w-3xl mx-auto space-y-2 sm:space-y-3">
           <form onSubmit={handleAnalyze} className="relative flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -278,8 +380,18 @@ export default function Home() {
                 value={tweetUrl}
                 onChange={(e) => setTweetUrl(e.target.value)}
                 placeholder="XポストURLを貼り付け (https://x.com/...)"
-                className="w-full bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl px-4 py-3 sm:py-3.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition shadow-inner"
+                className="w-full bg-slate-900/90 border border-slate-800 rounded-xl sm:rounded-2xl pl-4 pr-16 py-3 sm:py-3.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition shadow-inner"
               />
+              {/* クリップボード貼付ボタン */}
+              <button
+                type="button"
+                onClick={handlePasteClipboard}
+                title="クリップボードから貼り付け"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-pink-400 p-1.5 rounded-lg hover:bg-slate-800 transition text-[11px] flex items-center gap-1"
+              >
+                <ClipboardPaste className="w-4 h-4" />
+                <span className="text-[10px] hidden sm:inline">貼付</span>
+              </button>
             </div>
             <button
               type="submit"
@@ -318,6 +430,13 @@ export default function Home() {
           </div>
         </div>
 
+        {/* 既存レコード重複通知 */}
+        {existingRecordNotice && (
+          <div className="max-w-3xl mx-auto bg-amber-500/10 border border-amber-500/30 text-amber-300 p-3 sm:p-4 rounded-2xl flex items-center gap-2.5 text-xs">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-amber-400" />
+            <p>{existingRecordNotice}</p>
+          </div>
+        )}
 
         {/* エラー表示 */}
         {error && (
@@ -340,7 +459,7 @@ export default function Home() {
                       className="text-xs bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5"
                     >
                       {copiedCsv ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      {copiedCsv ? 'スプレッドシート用CSV行をコピー済' : 'シート貼付用CSVをコピー'}
+                      {copiedCsv ? 'CSV行コピー済' : 'CSV行コピー'}
                     </button>
                     <a
                       href={analysisResult.tweetUrl}
@@ -348,7 +467,7 @@ export default function Home() {
                       rel="noopener noreferrer"
                       className="text-xs bg-slate-900 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl hover:border-slate-700 transition flex items-center gap-1"
                     >
-                      元ツイートを開く <ExternalLink className="w-3 h-3 ml-1" />
+                      元ポスト <ExternalLink className="w-3 h-3 ml-0.5" />
                     </a>
                   </div>
                 </div>
@@ -359,7 +478,7 @@ export default function Home() {
                 <Sparkles className="w-10 h-10 text-pink-400/50 mx-auto" />
                 <p className="text-sm text-slate-300 font-medium">ポストのURLを入力して分析を開始してください</p>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  いいね・RP・インプレッションの初速、フォロワー比率、被写体の肌色露出率を総合判定してバズポテンシャルを可視化します。
+                  いいね・RP・表示回数・保存数(BM)の初速、フォロワー比率、被写体の肌色露出率を総合判定してバズポテンシャルを可視化します。
                 </p>
               </div>
             )}
@@ -370,7 +489,7 @@ export default function Home() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-white">肌色露出比率 vs エンゲージメント相関分析</h2>
+                <h2 className="text-base sm:text-lg font-bold text-white">肌色露出比率 vs エンゲージメント相関分析</h2>
                 <p className="text-xs text-slate-400">蓄積データから露出度がインプレッションやいいねに与える影響度を統計化</p>
               </div>
               <button
@@ -388,50 +507,98 @@ export default function Home() {
 
         {activeTab === 'history' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold text-white">Googleスプレッドシート蓄積レコード</h2>
-                <p className="text-xs text-slate-400">永続化されているデータ一覧（画像URLプレビュー付き）</p>
+                <h2 className="text-base sm:text-lg font-bold text-white">蓄積レコード・リサーチデータベース</h2>
+                <p className="text-xs text-slate-400">スプレッドシート永続化データ ({filteredAndSortedRecords.length} / {sheetRecords.length} 件)</p>
               </div>
               <button
                 onClick={loadSheetData}
                 disabled={sheetLoading}
-                className="text-xs bg-slate-900 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl hover:border-slate-700 transition flex items-center gap-1.5"
+                className="text-xs bg-slate-900 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl hover:border-slate-700 transition flex items-center gap-1.5 self-start sm:self-auto"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${sheetLoading ? 'animate-spin' : ''}`} />
                 スプレッドシート再同期
               </button>
             </div>
 
-            {sheetRecords.length === 0 ? (
+            {/* リサーチ・検索 & ソートバー */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-slate-900/80 border border-slate-800 p-2.5 rounded-2xl">
+              {/* 検索入力 */}
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="コスプレイヤー名で絞り込み..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 pl-8 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                />
+                <Filter className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              </div>
+
+              {/* ソートコントロール */}
+              <div className="flex items-center gap-1.5 overflow-x-auto text-xs">
+                <span className="text-[11px] text-slate-400 shrink-0">並び順:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e: any) => setSortBy(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                >
+                  <option value="newest">新着順</option>
+                  <option value="likes">いいね数 順</option>
+                  <option value="skinRatio">肌色率 順</option>
+                  <option value="buzzScore">バズスコア 順</option>
+                  <option value="impressions">表示回数 順</option>
+                </select>
+
+                <button
+                  onClick={() => setSortOrder((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                  title={sortOrder === 'desc' ? '降順 (大きい順)' : '昇順 (小さい順)'}
+                  className="bg-slate-950 border border-slate-800 text-slate-300 hover:text-pink-400 p-1.5 rounded-xl transition flex items-center gap-1"
+                >
+                  <ArrowUpDown className="w-3.5 h-3.5" />
+                  <span className="text-[10px]">{sortOrder === 'desc' ? '大→小' : '小→大'}</span>
+                </button>
+              </div>
+            </div>
+
+            {filteredAndSortedRecords.length === 0 ? (
               <div className="text-center py-12 border border-slate-800 rounded-2xl text-slate-500 text-sm">
-                データはまだありません。ツイート分析を実行してデータを蓄積してください。
+                該当するデータがありません。ツイート分析を実行してデータを蓄積してください。
               </div>
             ) : (
-              <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60">
+              <div className="overflow-x-auto border border-slate-800 rounded-2xl bg-slate-900/60 shadow-xl">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-950/80 text-slate-400 uppercase tracking-wider border-b border-slate-800">
                     <tr>
                       <th className="p-3">画像</th>
                       <th className="p-3">ユーザー</th>
-                      <th className="p-3">いいね</th>
+                      <th className="p-3 cursor-pointer hover:text-pink-400 transition" onClick={() => { setSortBy('likes'); setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}>
+                        いいね {sortBy === 'likes' && (sortOrder === 'desc' ? '↓' : '↑')}
+                      </th>
                       <th className="p-3">RP</th>
-                      <th className="p-3">表示回数</th>
+                      <th className="p-3 cursor-pointer hover:text-pink-400 transition" onClick={() => { setSortBy('impressions'); setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}>
+                        表示回数 {sortBy === 'impressions' && (sortOrder === 'desc' ? '↓' : '↑')}
+                      </th>
                       <th className="p-3">経過時間</th>
-                      <th className="p-3">肌色率</th>
-                      <th className="p-3">バズスコア</th>
+                      <th className="p-3 cursor-pointer hover:text-pink-400 transition" onClick={() => { setSortBy('skinRatio'); setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}>
+                        肌色率 {sortBy === 'skinRatio' && (sortOrder === 'desc' ? '↓' : '↑')}
+                      </th>
+                      <th className="p-3 cursor-pointer hover:text-pink-400 transition" onClick={() => { setSortBy('buzzScore'); setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}>
+                        バズスコア {sortBy === 'buzzScore' && (sortOrder === 'desc' ? '↓' : '↑')}
+                      </th>
                       <th className="p-3">評価</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    {sheetRecords.map((r, i) => (
+                    {filteredAndSortedRecords.map((r, i) => (
                       <tr key={i} className="hover:bg-slate-800/30 transition">
                         <td className="p-3">
                           {r.imageUrl ? (
                             <img
                               src={r.imageUrl}
                               alt="thumb"
-                              className="w-10 h-10 object-cover rounded-lg border border-slate-700"
+                              className="w-10 h-10 object-cover rounded-lg border border-slate-700 hover:scale-110 transition"
                             />
                           ) : (
                             <div className="w-10 h-10 bg-slate-800 rounded-lg" />
@@ -470,7 +637,7 @@ export default function Home() {
 
       {/* フッター */}
       <footer className="border-t border-slate-900 py-6 text-center text-xs text-slate-600">
-        <p>Cosplay Analytics System • Designed for zero-cost operation on Vercel & Google Sheets</p>
+        <p>Cosplay Analytics System • Zero-cost operation on Vercel & Google Sheets</p>
       </footer>
     </div>
   );
