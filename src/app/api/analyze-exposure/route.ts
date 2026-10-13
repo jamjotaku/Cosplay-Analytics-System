@@ -12,6 +12,7 @@ interface GeminiExposureResponse {
 // 安定して動作する高速・別枠クォータモデル順
 const CANDIDATE_MODELS = [
   'gemini-3-flash-preview',
+  'gemini-2.5-flash',
   'gemini-3.5-flash',
   'gemini-3.5-flash-lite',
   'gemini-3.7-flash',
@@ -27,9 +28,9 @@ const PROMPT = `あなたはコスプレ画像・ポートレート画像の衣�
 重要判定ルール:
 1. "白い服"、"白いドレス"、"白いタートルネック"、"白いソファー"、"白い背景壁" を「肌」と誤認しては絶対にいけません。布地と本人の露出肌（顔、首、デコルテ、肩、腹部、脚、腕等）を厳密に区別してください。
 2. bodySkinRatio: 人物の体全体（服を着ている部分＋露出している肌）のうち、露出している肌の面積割合 (0.00 〜 1.00 の小数値)。
-   - 水着・ビキニ・下着・胸元や腹部が大きく開いた衣装: 0.60 〜 0.95
-   - ショート丈Tシャツ＋短パン（お腹・脚・腕が露出）: 0.30 〜 0.55
-   - 長袖・タートルネック・ロングドレス（顔や一部の脚のみ露出）: 0.10 〜 0.30
+   - 水着・ビキニ・下着・胸元や腹部が大きく開いた衣装: 0.50 〜 0.95
+   - ショート丈Tシャツ＋短パン（お腹・脚・腕が露出）: 0.20 〜 0.50
+   - 長袖・タートルネック・制服・ロングドレス（顔や一部の脚のみ露出）: 0.05 〜 0.20
 3. skinRatio: 画像全体に対する露出肌の面積割合 (0.00 〜 1.00 の小数値)。
 4. framingTag: 構図 ('引き・全身' | 'ミドル・半身' | 'アップ・接写')。
 5. reasoning: 判定の根拠を日本語で明確に述べてください（例: "長袖タートルネック衣装のため上半身の露出はなく、露出は顔と座りポーズで見える太もものみです。白い衣装やソファーは肌と明確に区別しています。"）。
@@ -62,7 +63,17 @@ export async function POST(req: NextRequest) {
       if (body.mimeType) mimeType = body.mimeType;
     } else if (body.imageUrl) {
       try {
-        const imageRes = await fetch(body.imageUrl, {
+        let fetchUrl = body.imageUrl;
+        // Twitter画像を高解像度(orig/large)から小サイズ(small)に自動最適化して転送・Gemini推論を大幅高速化
+        if (fetchUrl.includes('pbs.twimg.com')) {
+          if (fetchUrl.includes('?name=')) {
+            fetchUrl = fetchUrl.replace(/\?name=[a-zA-Z0-9]+/, '?name=small');
+          } else {
+            fetchUrl = fetchUrl + '?name=small';
+          }
+        }
+
+        const imageRes = await fetch(fetchUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
             Referer: 'https://x.com/',

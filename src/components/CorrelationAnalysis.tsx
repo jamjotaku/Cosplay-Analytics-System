@@ -77,10 +77,12 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
   }, [framingStats]);
 
   // --- 2. 露出度別 (3段階) の統計集計 ---
+  // --- 2. 露出度別 (3段階) の統計集計 ---
+  // Gemini Vision AI 判定基準: 低露出(<20% 衣装・制服・タイツ等), 中露出(20-50% ヘルシー・短パン・肩出し等), 高露出(50%〜 水着・ビキニ等)
   const skinGroupStats = useMemo(() => {
     const isBody = metricMode === 'body';
-    const lowThreshold = isBody ? 0.15 : 0.08;
-    const highThreshold = isBody ? 0.35 : 0.18;
+    const lowThreshold = isBody ? 0.20 : 0.10;
+    const highThreshold = isBody ? 0.50 : 0.25;
 
     const lowGroup = records.filter((r) => {
       const val = isBody ? (r.bodySkinRatio ?? r.skinRatio) : r.skinRatio;
@@ -103,9 +105,9 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
     const avgHigh = getAvg(highGroup);
 
     return {
-      low: { count: lowGroup.length, avgLikes: avgLow, label: isBody ? '<15%' : '<8%' },
-      mid: { count: midGroup.length, avgLikes: avgMid, label: isBody ? '15〜35%' : '8〜18%' },
-      high: { count: highGroup.length, avgLikes: avgHigh, label: isBody ? '35%〜' : '18%〜' },
+      low: { count: lowGroup.length, avgLikes: avgLow, label: isBody ? '<20%' : '<10%' },
+      mid: { count: midGroup.length, avgLikes: avgMid, label: isBody ? '20〜50%' : '10〜25%' },
+      high: { count: highGroup.length, avgLikes: avgHigh, label: isBody ? '50%〜' : '25%〜' },
       multiplier: avgLow > 0 && avgHigh > 0 ? (avgHigh / avgLow).toFixed(1) : '-',
     };
   }, [records, metricMode]);
@@ -125,6 +127,7 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
         postTiming: timingInfo.formatted,
         imageUrl: r.imageUrl,
         url: r.tweetUrl,
+        aiReasoning: r.aiReasoning,
       };
     });
   }, [records, metricMode]);
@@ -300,17 +303,21 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
           <p className="text-[11px] sm:text-xs text-slate-400">低露出 ({skinGroupStats.low.label})</p>
           <p className="text-xl sm:text-2xl font-bold text-slate-200 mt-1">
             {skinGroupStats.low.avgLikes > 0 ? skinGroupStats.low.avgLikes.toLocaleString() : '-'}
+            <span className="text-xs font-normal text-slate-400 ml-1">avg</span>
           </p>
-          <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1">衣装・顔中心: {skinGroupStats.low.count} 件</p>
+          <p className="text-[10px] text-slate-500 mt-0.5 sm:mt-1">
+            {metricMode === 'body' ? '制服・長袖・衣装重視' : '顔・手中心'}: {skinGroupStats.low.count} 件
+          </p>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 p-3 sm:p-4 rounded-xl sm:rounded-2xl border-pink-500/20">
           <p className="text-[11px] sm:text-xs text-slate-400">中露出 ({skinGroupStats.mid.label})</p>
           <p className="text-xl sm:text-2xl font-bold text-pink-300 mt-1">
             {skinGroupStats.mid.avgLikes > 0 ? skinGroupStats.mid.avgLikes.toLocaleString() : '-'}
+            <span className="text-xs font-normal text-pink-400/70 ml-1">avg</span>
           </p>
           <p className="text-[10px] text-pink-400/80 mt-0.5 sm:mt-1">
-            サンプル: {skinGroupStats.mid.count} 件
+            {metricMode === 'body' ? 'ヘルシー・適度な露出' : 'ミドル露出'}: {skinGroupStats.mid.count} 件
           </p>
         </div>
 
@@ -318,6 +325,7 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
           <p className="text-[11px] sm:text-xs text-slate-400">高露出 ({skinGroupStats.high.label})</p>
           <p className="text-xl sm:text-2xl font-bold text-rose-400 mt-1">
             {skinGroupStats.high.avgLikes > 0 ? skinGroupStats.high.avgLikes.toLocaleString() : '-'}
+            <span className="text-xs font-normal text-rose-400/70 ml-1">avg</span>
           </p>
           <p className="text-[10px] text-rose-400/80 mt-0.5 sm:mt-1">
             {skinGroupStats.multiplier !== '-' ? `低露出の ${skinGroupStats.multiplier} 倍 (${skinGroupStats.high.count}件)` : `${skinGroupStats.high.count} 件`}
@@ -333,9 +341,15 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
               <TrendingUp className="w-4 h-4 text-pink-400" />
               露出度 vs 反応 相関分布図
             </h3>
-            <p className="text-xs text-slate-400">
-              横軸: {metricMode === 'body' ? '純粋衣装露出度(AI人物切抜)' : '画像全体肌色比率'}(%) / 縦軸: {yAxisMode === 'likes' ? 'いいね数' : '表示回数'}
-            </p>
+            <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-slate-400">
+              <span>横軸: {metricMode === 'body' ? '純粋衣装露出度(AI)' : '画像全体肌色比率'}(%) / 縦軸: {yAxisMode === 'likes' ? 'いいね数' : '表示回数'}</span>
+              <span className="hidden sm:inline text-slate-600">|</span>
+              <span className="flex items-center gap-2 text-[11px]">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#10b981]"></span>引き・全身</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#ec4899]"></span>ミドル・半身</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#a855f7]"></span>アップ・接写</span>
+              </span>
+            </div>
           </div>
 
           {/* 指標切り替えコントロール */}
@@ -416,29 +430,54 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
                   if (active && payload && payload.length) {
                     const data = payload[0].payload;
                     return (
-                      <div className="bg-slate-950/95 border border-slate-700 p-3 rounded-xl shadow-2xl text-xs space-y-1 backdrop-blur-md">
-                        <p className="font-bold text-pink-400 flex items-center justify-between gap-3">
-                          <span>@{data.name}</span>
-                          <span className="text-[10px] text-slate-400 font-normal">{data.framing}</span>
-                        </p>
-                        <p className="text-slate-300">
-                          {metricMode === 'body' ? '純粋衣装露出度:' : '全体肌色比率:'}{' '}
-                          <span className="font-bold text-white">{data.skinPct}%</span>
-                        </p>
-                        <p className="text-slate-300">
-                          いいね数: <span className="font-bold text-rose-400">{data.likes.toLocaleString()}</span>
-                        </p>
-                        {data.impressions > 0 && (
-                          <p className="text-slate-300">
-                            表示回数: <span className="font-bold text-blue-400">{data.impressions.toLocaleString()}</span>
-                          </p>
+                      <div className="bg-slate-950/95 border border-slate-700 p-3.5 rounded-2xl shadow-2xl text-xs space-y-2 backdrop-blur-md max-w-xs sm:max-w-sm">
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5">
+                          <span className="font-bold text-pink-400">@{data.name}</span>
+                          <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700">
+                            {data.framing}
+                          </span>
+                        </div>
+                        
+                        <div className="flex gap-2.5 items-start">
+                          {data.imageUrl && (
+                            <img
+                              src={data.imageUrl}
+                              alt="thumb"
+                              className="w-14 h-14 object-cover rounded-lg border border-slate-800 flex-shrink-0"
+                            />
+                          )}
+                          <div className="space-y-0.5 text-slate-300 flex-1">
+                            <p>
+                              {metricMode === 'body' ? '純粋衣装露出度:' : '全体肌色比率:'}{' '}
+                              <span className="font-bold text-white">{data.skinPct}%</span>
+                            </p>
+                            <p>
+                              いいね数: <span className="font-bold text-rose-400">{data.likes.toLocaleString()}</span>
+                            </p>
+                            {data.impressions > 0 && (
+                              <p>
+                                表示回数: <span className="font-bold text-blue-400">{data.impressions.toLocaleString()}</span>
+                              </p>
+                            )}
+                            <p>
+                              バズスコア: <span className="font-bold text-amber-400">{data.buzzScore}点</span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {data.aiReasoning && (
+                          <div className="text-[11px] text-pink-200/90 bg-pink-950/30 border border-pink-500/20 p-2 rounded-xl">
+                            <span className="font-bold text-pink-300 block mb-0.5 flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-pink-400" />
+                              AI判定解説:
+                            </span>
+                            {data.aiReasoning}
+                          </div>
                         )}
-                        <p className="text-slate-300">
-                          バズスコア: <span className="font-bold text-amber-400">{data.buzzScore}点</span>
-                        </p>
+
                         {data.postTiming && (
-                          <p className="text-[10px] text-slate-400 pt-0.5 border-t border-slate-800">
-                            投稿日時: <span className="text-slate-200 font-medium">{data.postTiming}</span>
+                          <p className="text-[10px] text-slate-500 pt-1 border-t border-slate-800/60">
+                            投稿日時: <span className="text-slate-300">{data.postTiming}</span>
                           </p>
                         )}
                       </div>
@@ -447,7 +486,14 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
                   return null;
                 }}
               />
-              <Scatter name="ポスト" data={scatterData} fill="#ec4899" />
+              <Scatter name="ポスト" data={scatterData} fill="#ec4899">
+                {scatterData.map((entry, index) => {
+                  let color = '#ec4899'; // ミドル・半身: ピンク
+                  if (entry.framing === '引き・全身') color = '#10b981'; // 引き・全身: エメラルド
+                  if (entry.framing === 'アップ・接写') color = '#a855f7'; // アップ・接写: パープル
+                  return <Cell key={`cell-${index}`} fill={color} />;
+                })}
+              </Scatter>
             </ScatterChart>
           </ResponsiveContainer>
         </div>
