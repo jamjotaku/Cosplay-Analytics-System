@@ -15,7 +15,7 @@ import {
   Cell,
 } from 'recharts';
 import { SheetRecord } from '@/types/tweet';
-import { Camera, Sparkles, TrendingUp, Clock, Layers, Award } from 'lucide-react';
+import { Camera, Sparkles, TrendingUp, Clock, Award, Users, Calendar } from 'lucide-react';
 
 interface CorrelationAnalysisProps {
   records: SheetRecord[];
@@ -26,6 +26,8 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
   const [metricMode, setMetricMode] = useState<'body' | 'total'>('body');
   // 散布図の縦軸モード: 'likes' (いいね数) または 'impressions' (表示回数)
   const [yAxisMode, setYAxisMode] = useState<'likes' | 'impressions'>('likes');
+  // 投稿タイミンググラフの切り替え: 'hour' (24時間) または 'day' (曜日別)
+  const [timingTab, setTimingTab] = useState<'hour' | 'day'>('hour');
 
   if (!records || records.length === 0) {
     return (
@@ -74,8 +76,6 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
   }, [framingStats]);
 
   // --- 2. 露出度別 (3段階) の統計集計 ---
-  // 純粋露出基準: 低露出 (<15%), 中露出 (15〜35%), 高露出 (>=35%)
-  // 全体肌色基準: 低露出 (<8%), 中露出 (8〜18%), 高露出 (>=18%)
   const skinGroupStats = useMemo(() => {
     const isBody = metricMode === 'body';
     const lowThreshold = isBody ? 0.15 : 0.08;
@@ -141,7 +141,6 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
     records.forEach((r) => {
       try {
         const d = new Date(r.timestamp);
-        // JST基準で時間を取得
         const hour = d.getHours();
         if (hour >= 0 && hour < 24) {
           hours[hour].count++;
@@ -159,16 +158,82 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
     return hours;
   }, [records]);
 
-  // 最も投稿が多い、または平均いいねが高いゴールデンタイム
   const bestHour = useMemo(() => {
     const activeHours = hourlyData.filter((h) => h.count > 0);
     if (activeHours.length === 0) return null;
     return activeHours.reduce((prev, curr) => (curr.avgLikes > prev.avgLikes ? curr : prev));
   }, [hourlyData]);
 
+  // --- 5. 曜日別パフォーマンス (日〜土) ---
+  const weekdayData = useMemo(() => {
+    const days = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜'];
+    const list = days.map((day) => ({
+      day,
+      count: 0,
+      totalLikes: 0,
+      avgLikes: 0,
+    }));
+
+    records.forEach((r) => {
+      try {
+        const d = new Date(r.timestamp);
+        const dayIdx = d.getDay();
+        if (dayIdx >= 0 && dayIdx < 7) {
+          list[dayIdx].count++;
+          list[dayIdx].totalLikes += r.likes || 0;
+        }
+      } catch {
+        // ignore
+      }
+    });
+
+    list.forEach((item) => {
+      item.avgLikes = item.count > 0 ? Math.round(item.totalLikes / item.count) : 0;
+    });
+
+    return list;
+  }, [records]);
+
+  const bestDay = useMemo(() => {
+    const activeDays = weekdayData.filter((d) => d.count > 0);
+    if (activeDays.length === 0) return null;
+    return activeDays.reduce((prev, curr) => (curr.avgLikes > prev.avgLikes ? curr : prev));
+  }, [weekdayData]);
+
+  // --- 6. フォロワー規模 (Tier) 別ベンチマーク ---
+  const tierStats = useMemo(() => {
+    const tiers: Record<string, { label: string; count: number; totalLikes: number; totalImps: number; totalScore: number }> = {
+      nano: { label: 'ナノ (<5K)', count: 0, totalLikes: 0, totalImps: 0, totalScore: 0 },
+      micro: { label: 'マイクロ (5K-20K)', count: 0, totalLikes: 0, totalImps: 0, totalScore: 0 },
+      middle: { label: 'ミドル (20K-100K)', count: 0, totalLikes: 0, totalImps: 0, totalScore: 0 },
+      mega: { label: 'メガ (>100K)', count: 0, totalLikes: 0, totalImps: 0, totalScore: 0 },
+    };
+
+    records.forEach((r) => {
+      const f = r.followers || 0;
+      let key = 'nano';
+      if (f >= 100000) key = 'mega';
+      else if (f >= 20000) key = 'middle';
+      else if (f >= 5000) key = 'micro';
+
+      tiers[key].count++;
+      tiers[key].totalLikes += r.likes || 0;
+      tiers[key].totalImps += r.impressions || 0;
+      tiers[key].totalScore += r.buzzScore || 0;
+    });
+
+    return Object.values(tiers).map((t) => ({
+      label: t.label,
+      count: t.count,
+      avgLikes: t.count > 0 ? Math.round(t.totalLikes / t.count) : 0,
+      avgImps: t.count > 0 ? Math.round(t.totalImps / t.count) : 0,
+      avgScore: t.count > 0 ? Number((t.totalScore / t.count).toFixed(1)) : 0,
+    }));
+  }, [records]);
+
   return (
     <div className="space-y-6">
-      {/* 構図別パフォーマンス比較 (Stage 2 新機能) */}
+      {/* 構図別パフォーマンス比較 */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl sm:rounded-3xl p-5 sm:p-6 backdrop-blur-xl space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -380,55 +445,159 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
         </div>
       </div>
 
-      {/* 投稿時間帯別 (24時間) のパフォーマンスグラフ (Stage 2 新機能) */}
+      {/* 投稿タイミング分析 (24時間帯 / 曜日別 切り替え) */}
       <div className="bg-slate-900/80 border border-slate-800 p-5 sm:p-6 rounded-2xl sm:rounded-3xl space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
               <Clock className="w-4 h-4 text-emerald-400" />
-              投稿時間帯別パフォーマンス (JST)
+              投稿タイミング別パフォーマンス (JST)
             </h3>
-            <p className="text-xs text-slate-400">何時台の投稿が最も平均いいね・エンゲージメントが高いかを可視化</p>
+            <p className="text-xs text-slate-400">何曜日・何時台の投稿が最も平均いいね・初速を獲得できているかを可視化</p>
           </div>
-          {bestHour && bestHour.count > 0 && (
-            <span className="text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-2.5 py-1 rounded-full font-medium">
+
+          <div className="flex items-center gap-2">
+            {/* タブ切り替え */}
+            <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setTimingTab('hour')}
+                className={`px-3 py-1 rounded-lg transition font-medium flex items-center gap-1.5 ${
+                  timingTab === 'hour' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" /> 24時間別
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimingTab('day')}
+                className={`px-3 py-1 rounded-lg transition font-medium flex items-center gap-1.5 ${
+                  timingTab === 'day' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" /> 曜日別
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ハイライトバッジ */}
+        <div className="flex flex-wrap items-center gap-2">
+          {timingTab === 'hour' && bestHour && bestHour.count > 0 && (
+            <span className="text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-3 py-1 rounded-full font-medium">
               🌟 最強時間帯: <b>{bestHour.hour}</b> (平均 {bestHour.avgLikes.toLocaleString()} いいね / {bestHour.count}件)
+            </span>
+          )}
+          {timingTab === 'day' && bestDay && bestDay.count > 0 && (
+            <span className="text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 px-3 py-1 rounded-full font-medium">
+              🌟 最強曜日: <b>{bestDay.day}</b> (平均 {bestDay.avgLikes.toLocaleString()} いいね / {bestDay.count}件)
             </span>
           )}
         </div>
 
+        {/* チャート表示 */}
         <div className="w-full h-60 pt-2">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={hourlyData} margin={{ top: 10, right: 10, bottom: 20, left: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-              <XAxis dataKey="hour" stroke="#94a3b8" tick={{ fontSize: 10 }} />
-              <YAxis stroke="#94a3b8" tick={{ fontSize: 10 }} />
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (active && payload && payload.length) {
-                    const d = payload[0].payload;
-                    return (
-                      <div className="bg-slate-950/95 border border-slate-700 p-2.5 rounded-xl shadow-xl text-xs space-y-1">
-                        <p className="font-bold text-white">{d.hour} 投稿データ</p>
-                        <p className="text-slate-300">投稿数: <span className="font-bold text-white">{d.count} 件</span></p>
-                        <p className="text-slate-300">平均いいね: <span className="font-bold text-emerald-400">{d.avgLikes.toLocaleString()}</span></p>
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
-              <Bar dataKey="avgLikes" radius={[4, 4, 0, 0]}>
-                {hourlyData.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={entry.hour === bestHour?.hour && entry.count > 0 ? '#10b981' : '#ec4899'}
-                    fillOpacity={entry.count > 0 ? 0.9 : 0.2}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
+            {timingTab === 'hour' ? (
+              <BarChart data={hourlyData} margin={{ top: 10, right: 10, bottom: 20, left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                <XAxis dataKey="hour" stroke="#94a3b8" tick={{ fontSize: 10 }} />
+                <YAxis stroke="#94a3b8" tick={{ fontSize: 10 }} />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const d = payload[0].payload;
+                      return (
+                        <div className="bg-slate-950/95 border border-slate-700 p-2.5 rounded-xl shadow-xl text-xs space-y-1">
+                          <p className="font-bold text-white">{d.hour} 投稿データ</p>
+                          <p className="text-slate-300">投稿数: <span className="font-bold text-white">{d.count} 件</span></p>
+                          <p className="text-slate-300">平均いいね: <span className="font-bold text-emerald-400">{d.avgLikes.toLocaleString()}</span></p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Bar dataKey="avgLikes" radius={[4, 4, 0, 0]}>
+                  {hourlyData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.hour === bestHour?.hour && entry.count > 0 ? '#10b981' : '#ec4899'}
+                      fillOpacity={entry.count > 0 ? 0.9 : 0.2}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            ) : (
+              <BarChart data={weekdayData} margin={{ top: 10, right: 10, bottom: 20, left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                <XAxis dataKey="day" stroke="#94a3b8" tick={{ fontSize: 10 }} />
+                <YAxis stroke="#94a3b8" tick={{ fontSize: 10 }} />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const d = payload[0].payload;
+                      return (
+                        <div className="bg-slate-950/95 border border-slate-700 p-2.5 rounded-xl shadow-xl text-xs space-y-1">
+                          <p className="font-bold text-white">{d.day} 投稿データ</p>
+                          <p className="text-slate-300">投稿数: <span className="font-bold text-white">{d.count} 件</span></p>
+                          <p className="text-slate-300">平均いいね: <span className="font-bold text-emerald-400">{d.avgLikes.toLocaleString()}</span></p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Bar dataKey="avgLikes" radius={[4, 4, 0, 0]}>
+                  {weekdayData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.day === bestDay?.day && entry.count > 0 ? '#10b981' : '#a855f7'}
+                      fillOpacity={entry.count > 0 ? 0.9 : 0.2}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            )}
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* アカウント規模 (フォロワーTier) 別ベンチマーク (Stage 3 新機能) */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl sm:rounded-3xl p-5 sm:p-6 backdrop-blur-xl space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Users className="w-5 h-5 text-indigo-400" />
+            <h3 className="text-sm sm:text-base font-bold text-white">アカウント規模（Tier）別ベンチマーク</h3>
+            <span className="text-[10px] bg-indigo-500/15 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30">
+              Stage 3
+            </span>
+          </div>
+          <span className="text-xs text-slate-400">同規模アカウントでの目標値・期待値の目安</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          {tierStats.map((tier) => (
+            <div
+              key={tier.label}
+              className="bg-slate-950/60 border border-slate-800/80 p-4 rounded-xl sm:rounded-2xl space-y-2"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-indigo-300">{tier.label}</span>
+                <span className="text-[10px] text-slate-500">{tier.count} 件</span>
+              </div>
+              <div>
+                <p className="text-xl font-black text-white">
+                  {tier.avgLikes > 0 ? tier.avgLikes.toLocaleString() : '-'}
+                  <span className="text-xs font-normal text-slate-400 ml-1">avg いいね</span>
+                </p>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 mt-2 border-t border-slate-800/60">
+                  <span>表示回数: <b className="text-blue-400">{tier.avgImps > 0 ? tier.avgImps.toLocaleString() : '-'}</b></span>
+                  <span>スコア: <b className="text-amber-400">{tier.avgScore}点</b></span>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

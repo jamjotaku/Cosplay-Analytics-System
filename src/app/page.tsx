@@ -16,11 +16,12 @@ import {
   ArrowUpDown,
   Filter,
   CheckCircle2,
+  Share2,
 } from 'lucide-react';
 import { TweetAnalysisData, SheetRecord } from '@/types/tweet';
 import { analyzeImageSkinTone } from '@/lib/skinToneDetector';
 import { calculateBuzzMetrics } from '@/lib/buzzScorer';
-import { fetchSheetData, formatAsCsvRow } from '@/lib/sheetSync';
+import { fetchSheetData, formatAsCsvRow, CSV_HEADER } from '@/lib/sheetSync';
 import { AnalysisResultCard } from '@/components/AnalysisResultCard';
 import { CorrelationAnalysis } from '@/components/CorrelationAnalysis';
 
@@ -39,6 +40,7 @@ export default function Home() {
   const [sheetLoading, setSheetLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'analyzer' | 'correlation' | 'history'>('analyzer');
   const [copiedCsv, setCopiedCsv] = useState(false);
+  const [copiedShare, setCopiedShare] = useState(false);
 
   // シート記録の絞り込み & ソート状態
   const [searchQuery, setSearchQuery] = useState('');
@@ -289,6 +291,44 @@ export default function Home() {
     setTimeout(() => setCopiedCsv(false), 2500);
   };
 
+  // SNS共有用バズ診断テキストのコピー
+  const copyShareText = () => {
+    if (!analysisResult) return;
+    const bodySkin = ((analysisResult.averageBodySkinRatio ?? analysisResult.averageSkinRatio) * 100).toFixed(1);
+    const totalSkin = (analysisResult.averageSkinRatio * 100).toFixed(1);
+    const text = [
+      `【Cosplay Analytics バズ診断結果】`,
+      `👤 @${analysisResult.authorUsername} (${analysisResult.authorName})`,
+      `🎖️ バズ判定: ${analysisResult.buzzGrade} (${analysisResult.buzzScore}点) - ${analysisResult.buzzProbability}`,
+      `✨ 純粋衣装露出度: ${bodySkin}% (全体比: ${totalSkin}% / 構図: ${analysisResult.framingTag})`,
+      `❤️ いいね数: ${analysisResult.likes.toLocaleString()} (時速: ${analysisResult.velocityHourly}/h)`,
+      `🔁 RP: ${analysisResult.retweets.toLocaleString()} | 🔖 保存(BM): ${(analysisResult.bookmarks ?? 0).toLocaleString()}`,
+      `#CosplayAnalytics`,
+      `https://cosplay-analytics-system.vercel.app`,
+    ].join('\n');
+
+    navigator.clipboard.writeText(text);
+    setCopiedShare(true);
+    setTimeout(() => setCopiedShare(false), 2500);
+  };
+
+  // 蓄積全レコードのUTF-8 BOM付きCSV一括ダウンロード
+  const downloadAllCsv = () => {
+    if (filteredAndSortedRecords.length === 0) return;
+    const header = CSV_HEADER;
+    const rows = filteredAndSortedRecords.map(formatAsCsvRow);
+    const csvContent = '\uFEFF' + [header, ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `cosplay_analytics_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   // シート記録の絞り込み & ソートロジック
   const filteredAndSortedRecords = useMemo(() => {
     let result = [...sheetRecords];
@@ -344,10 +384,10 @@ export default function Home() {
               <h1 className="text-sm sm:text-base font-bold tracking-tight text-white flex items-center gap-1.5">
                 Cosplay Analytics
                 <span className="text-[9px] sm:text-[10px] bg-pink-500/20 text-pink-400 font-semibold px-1.5 py-0.5 rounded-full border border-pink-500/30">
-                  v2.0 (Stage 1 AI)
+                  v2.2 (Stage 3)
                 </span>
               </h1>
-              <p className="text-[10px] text-slate-400 hidden md:block">AI人物分離・構図判定 ＆ X画像ポスト露出相関ダッシュボード</p>
+              <p className="text-[10px] text-slate-400 hidden md:block">AI人物分離・構図判定・曜日×時間帯アナリティクス ＆ 露出相関ダッシュボード</p>
             </div>
           </div>
 
@@ -474,13 +514,20 @@ export default function Home() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold text-slate-300">分析レポート</h2>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={copyShareText}
+                      className="text-xs bg-slate-900 border border-slate-800 hover:border-pink-500/50 text-pink-300 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5"
+                    >
+                      {copiedShare ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5 text-pink-400" />}
+                      {copiedShare ? '共有文コピー済' : '診断結果共有'}
+                    </button>
                     <button
                       onClick={copyCsvRow}
                       className="text-xs bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5"
                     >
                       {copiedCsv ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      {copiedCsv ? 'CSV行コピー済' : 'CSV行コピー'}
+                      {copiedCsv ? 'CSVコピー済' : 'CSV行コピー'}
                     </button>
                     <a
                       href={analysisResult.tweetUrl}
@@ -533,14 +580,25 @@ export default function Home() {
                 <h2 className="text-base sm:text-lg font-bold text-white">蓄積レコード・リサーチデータベース</h2>
                 <p className="text-xs text-slate-400">スプレッドシート永続化データ ({filteredAndSortedRecords.length} / {sheetRecords.length} 件)</p>
               </div>
-              <button
-                onClick={loadSheetData}
-                disabled={sheetLoading}
-                className="text-xs bg-slate-900 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl hover:border-slate-700 transition flex items-center gap-1.5 self-start sm:self-auto"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${sheetLoading ? 'animate-spin' : ''}`} />
-                スプレッドシート再同期
-              </button>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={downloadAllCsv}
+                  disabled={filteredAndSortedRecords.length === 0}
+                  className="text-xs bg-slate-900 border border-slate-800 hover:border-pink-500/50 text-pink-300 px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 disabled:opacity-50"
+                  title="表示中のデータをUTF-8 BOM付きCSVとして保存"
+                >
+                  <Download className="w-3.5 h-3.5 text-pink-400" />
+                  CSV一括出力 ({filteredAndSortedRecords.length}件)
+                </button>
+                <button
+                  onClick={loadSheetData}
+                  disabled={sheetLoading}
+                  className="text-xs bg-slate-900 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-xl hover:border-slate-700 transition flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${sheetLoading ? 'animate-spin' : ''}`} />
+                  スプレッドシート再同期
+                </button>
+              </div>
             </div>
 
             {/* リサーチ・検索 & ソートバー */}
