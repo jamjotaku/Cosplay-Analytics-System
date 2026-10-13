@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export const maxDuration = 30; // Vercel function timeout
+export const maxDuration = 30; // Vercel function timeout (最大30秒)
 
 interface GeminiExposureResponse {
   bodySkinRatio: number;
@@ -9,7 +9,7 @@ interface GeminiExposureResponse {
   reasoning: string;
 }
 
-// 安定して動作する高速・別枠クォータモデルを順次フォールバック
+// 安定して動作する高速・別枠クォータモデル順
 const CANDIDATE_MODELS = [
   'gemini-3-flash-preview',
   'gemini-3.5-flash',
@@ -18,6 +18,8 @@ const CANDIDATE_MODELS = [
   'gemini-3.8-flash',
   'gemini-flash-latest',
 ];
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const PROMPT = `あなたはコスプレ画像・ポートレート画像の衣装露出度と構図を客観的に判定する専門アナリストAIです。
 画像内の人物と衣装を視覚的に細部まで観察し、以下のJSON形式で回答してください。
@@ -107,70 +109,78 @@ export async function POST(req: NextRequest) {
 
     const attemptErrors: Record<string, string> = {};
 
-    // 各モデル高速タイムアウト（3秒）で次モデルへスイッチ（Vercel 10秒制限の前に確実に解決）
-    for (const model of CANDIDATE_MODELS) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3500);
+    // 内部自動待機キュー＆モデルフォールバックループ（最大2ラウンド実行）
+    for (let round = 1; round <= 2; round++) {
+      for (const model of CANDIDATE_MODELS) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 7500); // 7.5秒タイムアウト
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        });
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
 
-        clearTimeout(timeout);
+          clearTimeout(timeout);
 
-        if (!res.ok) {
-          const errText = await res.text();
-          console.warn(`Gemini model ${model} failed (${res.status}): ${errText.slice(0, 80)}`);
-          attemptErrors[model] = `Status ${res.status}: ${errText.slice(0, 80)}`;
-          continue;
+          if (!res.ok) {
+            const errText = await res.text();
+            attemptErrors[`${model}_r${round}`] = `Status ${res.status}: ${errText.slice(0, 80)}`;
+            // 429/503 は混雑中なので次のモデルへ即座にスイッチ
+            continue;
+          }
+
+          const data = await res.json();
+          const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!rawJsonText) {
+            attemptErrors[`${model}_r${round}`] = 'Empty candidate text';
+            continue;
+          }
+
+          const parsed: GeminiExposureResponse = JSON.parse(rawJsonText);
+          
+          // 戻り値の正規化 (パーセント表記 30 の場合は 0.30 に補正)
+          let rawBody = Number(parsed.bodySkinRatio) || 0;
+          if (rawBody > 1) rawBody = rawBody / 100;
+          const bodySkinRatio = Math.max(0, Math.min(1, Number(rawBody.toFixed(4))));
+
+          let rawSkin = Number(parsed.skinRatio) || 0;
+          if (rawSkin > 1) rawSkin = rawSkin / 100;
+          const skinRatio = Math.max(0, Math.min(1, Number(rawSkin.toFixed(4))));
+
+          let framingTag: '引き・全身' | 'ミドル・半身' | 'アップ・接写' = 'ミドル・半身';
+          if (parsed.framingTag === '引き・全身' || parsed.framingTag === 'アップ・接写') {
+            framingTag = parsed.framingTag;
+          }
+
+          return NextResponse.json({
+            success: true,
+            model,
+            round,
+            bodySkinRatio,
+            skinRatio,
+            framingTag,
+            reasoning: parsed.reasoning || 'AIによる構図と衣装の自動判定',
+          });
+        } catch (err: any) {
+          attemptErrors[`${model}_r${round}`] = err.message || 'Unknown error';
         }
+      }
 
-        const data = await res.json();
-        const rawJsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!rawJsonText) {
-          attemptErrors[model] = 'Empty candidate text';
-          continue;
-        }
-
-        const parsed: GeminiExposureResponse = JSON.parse(rawJsonText);
-        
-        // 戻り値の正規化 (パーセント表記 30 の場合は 0.30 に補正)
-        let rawBody = Number(parsed.bodySkinRatio) || 0;
-        if (rawBody > 1) rawBody = rawBody / 100;
-        const bodySkinRatio = Math.max(0, Math.min(1, Number(rawBody.toFixed(4))));
-
-        let rawSkin = Number(parsed.skinRatio) || 0;
-        if (rawSkin > 1) rawSkin = rawSkin / 100;
-        const skinRatio = Math.max(0, Math.min(1, Number(rawSkin.toFixed(4))));
-
-        let framingTag: '引き・全身' | 'ミドル・半身' | 'アップ・接写' = 'ミドル・半身';
-        if (parsed.framingTag === '引き・全身' || parsed.framingTag === 'アップ・接写') {
-          framingTag = parsed.framingTag;
-        }
-
-        return NextResponse.json({
-          success: true,
-          model,
-          bodySkinRatio,
-          skinRatio,
-          framingTag,
-          reasoning: parsed.reasoning || 'AIによる構図と衣装の自動判定',
-        });
-      } catch (err: any) {
-        attemptErrors[model] = err.message || 'Unknown error';
-        console.warn(`Error during Gemini call with ${model}:`, err.message);
+      // ラウンド1で全モデルが制限/混雑だった場合、1.5秒待機してクォータ回復を待ってからラウンド2を実行
+      if (round === 1) {
+        await sleep(1500);
       }
     }
 
+    // すべてのモデル・全ラウンドで失敗した場合はローカル色彩判定へ安全フォールバック
     return NextResponse.json({
       success: false,
       fallback: true,
-      error: 'All Gemini models temporarily unavailable',
+      error: 'All Gemini models temporarily unavailable after auto-retries',
       details: attemptErrors,
     });
   } catch (globalErr: any) {
