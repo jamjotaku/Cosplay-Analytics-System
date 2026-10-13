@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Search, Table, RefreshCw, Copy, Check, ExternalLink, BarChart3, AlertCircle } from 'lucide-react';
+import { Sparkles, Search, Table, RefreshCw, Copy, Check, ExternalLink, BarChart3, AlertCircle, Download } from 'lucide-react';
 import { TweetAnalysisData, SheetRecord } from '@/types/tweet';
 import { analyzeImageSkinTone } from '@/lib/skinToneDetector';
 import { calculateBuzzMetrics } from '@/lib/buzzScorer';
@@ -15,6 +15,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<TweetAnalysisData | null>(null);
 
+  // PWA インストールプロンプト (Android / PC Chrome / Edge)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
   // スプレッドシート連携データ
   const [sheetRecords, setSheetRecords] = useState<SheetRecord[]>([]);
   const [sheetLoading, setSheetLoading] = useState(false);
@@ -24,7 +27,7 @@ export default function Home() {
   // 公開CSV URL
   const sheetCsvUrl = process.env.NEXT_PUBLIC_SHEET_CSV_URL || '';
 
-  // 初回データ読み込み & PWA サービスワーカー登録
+  // 初回データ読み込み & PWA サービスワーカー登録 & インストール監視
   useEffect(() => {
     if (sheetCsvUrl) {
       loadSheetData();
@@ -34,7 +37,23 @@ export default function Home() {
         console.warn('SW registration failed:', err);
       });
     }
+
+    const handleBeforeInstall = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
   }, [sheetCsvUrl]);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   const loadSheetData = async () => {
     if (!sheetCsvUrl) return;
@@ -192,9 +211,12 @@ export default function Home() {
       <header className="border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-xl sticky top-0 z-50 pt-[env(safe-area-inset-top,0px)]">
         <div className="max-w-7xl mx-auto px-4 h-14 sm:h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 sm:gap-3">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-pink-500 via-rose-500 to-amber-400 flex items-center justify-center shadow-lg shadow-pink-500/20 shrink-0">
-              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
-            </div>
+            <img
+              src="/icon.png"
+              alt="Cosplay Analytics"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl object-contain bg-slate-900 border border-slate-700 shadow-md shadow-pink-500/20 shrink-0"
+            />
+
             <div>
               <h1 className="text-sm sm:text-base font-bold tracking-tight text-white flex items-center gap-1.5">
                 Cosplay Analytics
@@ -278,10 +300,21 @@ export default function Home() {
             </button>
           </form>
 
-          {/* セーフティ・Bot制限インジケータ */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-[10px] sm:text-[11px] text-slate-500 px-1 gap-1">
+          {/* セーフティ・Bot制限インジケータ & PWAインストールボタン */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-[10px] sm:text-[11px] text-slate-500 px-1 gap-1.5">
             <span>🛡️ Bot検知回避: 待機ジッター & 20回/分リクエストガード有効</span>
-            <span>📱 PWA対応: スマホのホーム画面に追加可能</span>
+            {deferredPrompt ? (
+              <button
+                type="button"
+                onClick={handleInstallApp}
+                className="text-pink-400 hover:text-pink-300 font-semibold flex items-center gap-1.5 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/30 px-2.5 py-1 rounded-lg transition"
+              >
+                <Download className="w-3.5 h-3.5" />
+                アプリをインストール
+              </button>
+            ) : (
+              <span>📱 PWA対応: PC/Android/iPhoneでアプリ化可能</span>
+            )}
           </div>
         </div>
 

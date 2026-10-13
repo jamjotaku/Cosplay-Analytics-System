@@ -25,6 +25,10 @@ export const metadata: Metadata = {
   title: "Cosplay Analytics System",
   description: "X画像ポストのバズ初速 & 肌色露出比率リアルタイム分析ツール",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-touch-icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -40,9 +44,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-        <link rel="apple-touch-icon" href="/favicon.ico" />
+        <link rel="icon" href="/icon.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </head>
       <body className="min-h-full flex flex-col bg-slate-950 text-slate-100">{children}</body>
     </html>
   );
 }
+
