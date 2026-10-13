@@ -129,33 +129,71 @@ export default function Home() {
 
       const raw = resData.data;
 
-      // 2. ブラウザ側で画像の肌色比率 ＆ AI人物セグメンテーションを解析
+      // 2. 画像の肌色比率 ＆ 露出度判定 (Gemini Vision AI 優先 ＆ ローカル色彩エンジン二重フォールバック)
       let totalSkin = 0;
       let totalBodySkin = 0;
       let photoCount = 0;
       let peakSkinRatio = 0;
       let peakIndex = -1;
       let primaryFramingTag = 'ミドル・半身';
+      let primaryReasoning: string | undefined = undefined;
+      let hasAiAnalyzed = false;
       const mediaWithSkin = [...raw.media];
 
       for (let i = 0; i < mediaWithSkin.length; i++) {
         if (mediaWithSkin[i].type === 'photo') {
-          const skinResult = await analyzeImageSkinTone(mediaWithSkin[i].url, true);
-          mediaWithSkin[i].skinRatio = skinResult.skinRatio;
-          mediaWithSkin[i].bodySkinRatio = skinResult.bodySkinRatio;
-          mediaWithSkin[i].personRatio = skinResult.personRatio;
-          mediaWithSkin[i].framingTag = skinResult.framingTag;
+          let bodySkin = 0;
+          let skin = 0;
+          let framing: '引き・全身' | 'ミドル・半身' | 'アップ・接写' = 'ミドル・半身';
+          let reasoning: string | undefined = undefined;
+          let isAi = false;
+
+          // 1. まず Gemini Vision AI での高精度判定を試行
+          try {
+            const geminiRes = await fetch('/api/analyze-exposure', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ imageUrl: mediaWithSkin[i].url }),
+            }).then((r) => r.json());
+
+            if (geminiRes?.success) {
+              bodySkin = geminiRes.bodySkinRatio;
+              skin = geminiRes.skinRatio;
+              framing = geminiRes.framingTag;
+              reasoning = geminiRes.reasoning;
+              isAi = true;
+              hasAiAnalyzed = true;
+              if (i === 0) primaryReasoning = reasoning;
+            }
+          } catch (aiErr) {
+            console.warn('Gemini exposure API failed, falling back to local engine:', aiErr);
+          }
+
+          // 2. Gemini が利用不能または失敗した場合、ローカル色彩判定エンジンにフォールバック
+          if (!isAi) {
+            const skinResult = await analyzeImageSkinTone(mediaWithSkin[i].url, true);
+            bodySkin = skinResult.bodySkinRatio;
+            skin = skinResult.skinRatio;
+            framing = skinResult.framingTag;
+            mediaWithSkin[i].personRatio = skinResult.personRatio;
+          }
+
+          mediaWithSkin[i].bodySkinRatio = bodySkin;
+          mediaWithSkin[i].skinRatio = skin;
+          mediaWithSkin[i].framingTag = framing;
+          mediaWithSkin[i].aiReasoning = reasoning;
+          mediaWithSkin[i].isAiAnalyzed = isAi;
           
-          totalSkin += skinResult.skinRatio;
-          totalBodySkin += skinResult.bodySkinRatio;
+          totalSkin += skin;
+          totalBodySkin += bodySkin;
           photoCount++;
 
           if (i === 0) {
-            primaryFramingTag = skinResult.framingTag;
+            primaryFramingTag = framing;
           }
 
-          if (skinResult.skinRatio > peakSkinRatio) {
-            peakSkinRatio = skinResult.skinRatio;
+          if (skin > peakSkinRatio) {
+            peakSkinRatio = skin;
             peakIndex = i;
           }
         }
@@ -205,6 +243,8 @@ export default function Home() {
         averageBodySkinRatio: avgBodySkinRatio,
         peakSkinRatio,
         framingTag: primaryFramingTag,
+        aiReasoning: primaryReasoning,
+        isAiAnalyzed: hasAiAnalyzed,
         engagementTotal: buzz.engagementTotal,
         engagementRateFollowers: buzz.engagementRateFollowers,
         engagementRateViews: buzz.engagementRateViews,
@@ -247,6 +287,7 @@ export default function Home() {
         framingTag: finalData.framingTag,
         createdAt: finalData.createdAt,
         postTiming: finalData.postTiming,
+        aiReasoning: finalData.aiReasoning,
       };
 
       // ローカル一覧を更新（既存があれば最新化、なければ先頭追加）

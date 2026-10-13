@@ -10,6 +10,8 @@ export interface TweetMedia {
   framingTag?: '引き・全身' | 'ミドル・半身' | 'アップ・接写';
   isPeakSkin?: boolean; // 複数枚中最も露出が高いカット
   sensitiveEstimated?: boolean;
+  aiReasoning?: string; // Gemini Vision AI による露出判定根拠
+  isAiAnalyzed?: boolean; // 視覚AIによる高精度判定フラグ
 }
 
 export type AuthorTier = 'ナノ (<5K)' | 'マイクロ (5K-20K)' | 'ミドル (20K-100K)' | 'メガ (>100K)';
@@ -45,6 +47,8 @@ export interface TweetAnalysisData {
   averageBodySkinRatio: number; // 人物領域に対する平均純粋衣装露出度 (Stage 1 AI)
   peakSkinRatio: number;        // 最も露出が高い写真の肌色比率
   framingTag: string;           // '引き・全身' | 'ミドル・半身' | 'アップ・接写'
+  aiReasoning?: string;         // Gemini Vision AI による判定理由
+  isAiAnalyzed?: boolean;       // Gemini Vision AI 判定フラグ
   
   // Calculated Buzz Metrics
   engagementTotal: number;
@@ -80,4 +84,5 @@ export interface SheetRecord {
   framingTag?: string;    // 構図タグ ('引き・全身' | 'ミドル・半身' | 'アップ・接写')
   createdAt?: string;     // Xメタデータの投稿日時 (UTC)
   postTiming?: string;    // JST投稿曜日・時間 (例: "金曜 21:30")
+  aiReasoning?: string;   // Gemini Vision AI 判定理由
 }

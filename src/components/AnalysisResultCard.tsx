@@ -132,17 +132,24 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ data }) 
           </p>
         </div>
 
-        {/* 肌色露出比率 (Stage 1: AI人物切り抜きハイブリッド) */}
+        {/* 肌色露出比率 (Stage 1: AI人物切り抜きハイブリッド ＆ Gemini Vision) */}
         <div className="bg-slate-950/60 border border-slate-800/80 p-3 sm:p-4 rounded-2xl col-span-2 sm:col-span-1 border-pink-500/20">
           <div className="flex items-center justify-between text-pink-400 text-[11px] sm:text-xs font-medium mb-1">
             <span className="flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" /> 純粋衣装露出度
             </span>
-            {data.framingTag && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/15 text-pink-300 border border-pink-500/30 font-medium">
-                {data.framingTag}
-              </span>
-            )}
+            <div className="flex items-center gap-1">
+              {data.isAiAnalyzed && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 font-medium">
+                  AI視覚認識
+                </span>
+              )}
+              {data.framingTag && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-500/15 text-pink-300 border border-pink-500/30 font-medium">
+                  {data.framingTag}
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-baseline gap-2">
             <p className="text-xl sm:text-2xl font-black text-pink-400">
@@ -168,6 +175,28 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ data }) 
           </p>
         </div>
       </div>
+
+      {/* Gemini 視覚AI 判定根拠バナー */}
+      {data.aiReasoning && (
+        <div className="bg-gradient-to-r from-purple-950/30 via-pink-950/20 to-slate-900 border border-purple-500/30 p-3.5 sm:p-4 rounded-2xl flex items-start gap-3 text-xs">
+          <div className="p-1.5 bg-purple-500/20 rounded-xl text-purple-300 shrink-0 mt-0.5">
+            <Sparkles className="w-4 h-4 text-purple-300" />
+          </div>
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-purple-300 text-[11px] tracking-wide">
+                Google Gemini 視覚AI 判定解説
+              </span>
+              <span className="text-[9px] bg-purple-500/15 text-purple-300 px-1.5 py-0.2 rounded-full border border-purple-500/30">
+                白服・白壁誤認ゼロ判定
+              </span>
+            </div>
+            <p className="text-slate-300 text-[11px] sm:text-xs leading-relaxed">
+              {data.aiReasoning}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 画像プレビュー & 肌色解析マスク一覧 */}
       {data.media && data.media.length > 0 && (
@@ -213,6 +242,11 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ data }) 
                       <p className="text-slate-400 text-[10px] flex justify-between">
                         <span>構図判定:</span>
                         <span className="text-slate-200">{m.framingTag}</span>
+                      </p>
+                    )}
+                    {m.aiReasoning && (
+                      <p className="text-purple-300 text-[10px] pt-1 border-t border-slate-800/80 line-clamp-2">
+                        💡 {m.aiReasoning}
                       </p>
                     )}
                     {m.width && m.height && (

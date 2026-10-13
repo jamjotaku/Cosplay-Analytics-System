@@ -58,6 +58,7 @@ export async function fetchSheetData(csvUrl: string): Promise<SheetRecord[]> {
         ? cleanSkinRatio(row['bodySkinRatio'] ?? row['純粋露出度'])
         : skinRatio;
       const framingTag = row['framingTag'] || row['構図'] || (skinRatio > 0.35 ? 'アップ・接写' : skinRatio < 0.12 ? '引き・全身' : 'ミドル・半身');
+      const aiReasoning = row['aiReasoning'] || row['AI判定理由'] || row['理由'] || '';
 
       const hoursElapsed = cleanNumber(row['hoursElapsed'] ?? row['Hours Elapsed'] ?? row['経過時間'], 1);
       const timestamp = row['timestamp'] || row['Timestamp'] || row['取得日時'] || new Date().toISOString();
@@ -80,6 +81,7 @@ export async function fetchSheetData(csvUrl: string): Promise<SheetRecord[]> {
         bodySkinRatio,
         framingTag,
         postTiming,
+        aiReasoning,
       });
     }
 
@@ -109,8 +111,9 @@ export function formatAsCsvRow(record: SheetRecord): string {
     `"${record.imageUrl}"`,
     record.bodySkinRatio ?? record.skinRatio,
     `"${record.framingTag ?? 'ミドル・半身'}"`,
+    `"${(record.aiReasoning ?? '').replace(/"/g, '""')}"`,
   ].join(',');
 }
 
-export const CSV_HEADER = 'timestamp,tweetUrl,author,followers,likes,retweets,impressions,hoursElapsed,skinRatio,buzzScore,buzzGrade,imageUrl,bodySkinRatio,framingTag';
+export const CSV_HEADER = 'timestamp,tweetUrl,author,followers,likes,retweets,impressions,hoursElapsed,skinRatio,buzzScore,buzzGrade,imageUrl,bodySkinRatio,framingTag,aiReasoning';
 
