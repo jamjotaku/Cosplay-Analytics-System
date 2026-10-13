@@ -78,4 +78,6 @@ export interface SheetRecord {
   imageUrl: string;
   bodySkinRatio?: number; // 純粋衣装露出度 (AI人物分離)
   framingTag?: string;    // 構図タグ ('引き・全身' | 'ミドル・半身' | 'アップ・接写')
+  createdAt?: string;     // Xメタデータの投稿日時 (UTC)
+  postTiming?: string;    // JST投稿曜日・時間 (例: "金曜 21:30")
 }

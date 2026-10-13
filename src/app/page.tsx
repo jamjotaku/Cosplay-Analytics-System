@@ -245,6 +245,8 @@ export default function Home() {
         imageUrl: finalData.media[0]?.url || '',
         bodySkinRatio: finalData.averageBodySkinRatio,
         framingTag: finalData.framingTag,
+        createdAt: finalData.createdAt,
+        postTiming: finalData.postTiming,
       };
 
       // ローカル一覧を更新（既存があれば最新化、なければ先頭追加）
@@ -283,6 +285,8 @@ export default function Home() {
       imageUrl: analysisResult.media[0]?.url || '',
       bodySkinRatio: analysisResult.averageBodySkinRatio,
       framingTag: analysisResult.framingTag,
+      createdAt: analysisResult.createdAt,
+      postTiming: analysisResult.postTiming,
     };
 
     const row = formatAsCsvRow(record);
@@ -661,7 +665,7 @@ export default function Home() {
                       <th className="p-3 cursor-pointer hover:text-pink-400 transition" onClick={() => { setSortBy('impressions'); setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}>
                         表示回数 {sortBy === 'impressions' && (sortOrder === 'desc' ? '↓' : '↑')}
                       </th>
-                      <th className="p-3">経過</th>
+                      <th className="p-3">投稿日時</th>
                       <th className="p-3 cursor-pointer hover:text-pink-400 transition" onClick={() => { setSortBy('bodySkinRatio'); setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc'); }}>
                         純粋露出(全体) {sortBy === 'bodySkinRatio' && (sortOrder === 'desc' ? '↓' : '↑')}
                       </th>
@@ -703,7 +707,12 @@ export default function Home() {
                         <td className="p-3 font-semibold text-rose-400">{(r.likes ?? 0).toLocaleString()}</td>
                         <td className="p-3 text-emerald-400">{(r.retweets ?? 0).toLocaleString()}</td>
                         <td className="p-3 text-blue-400">{r.impressions > 0 ? r.impressions.toLocaleString() : '-'}</td>
-                        <td className="p-3">{r.hoursElapsed ?? 1}h</td>
+                        <td className="p-3 whitespace-nowrap">
+                          <div className="flex flex-col">
+                            <span className="text-slate-200 font-medium text-[11px]">{r.postTiming || '-'}</span>
+                            <span className="text-[10px] text-slate-500">{r.hoursElapsed ?? 1}h前</span>
+                          </div>
+                        </td>
                         <td className="p-3">
                           <div className="flex flex-col">
                             <span className="text-pink-400 font-bold">

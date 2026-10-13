@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { SheetRecord } from '@/types/tweet';
 import { Camera, Sparkles, TrendingUp, Clock, Award, Users, Calendar } from 'lucide-react';
+import { getTweetJSTInfo } from '@/lib/tweetTime';
 
 interface CorrelationAnalysisProps {
   records: SheetRecord[];
@@ -113,6 +114,7 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
   const scatterData = useMemo(() => {
     return records.map((r) => {
       const effectiveSkin = metricMode === 'body' ? (r.bodySkinRatio ?? r.skinRatio) : r.skinRatio;
+      const timingInfo = getTweetJSTInfo(r);
       return {
         name: r.author,
         skinPct: Number((effectiveSkin * 100).toFixed(1)),
@@ -120,6 +122,7 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
         impressions: r.impressions,
         buzzScore: r.buzzScore,
         framing: r.framingTag || 'ミドル・半身',
+        postTiming: timingInfo.formatted,
         imageUrl: r.imageUrl,
         url: r.tweetUrl,
       };
@@ -127,6 +130,7 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
   }, [records, metricMode]);
 
   // --- 4. 投稿時間帯別 (24時間) のパフォーマンス ---
+  // XのSnowflake IDまたはcreatedAtから真の投稿時間(JST)を正確に集計
   const hourlyData = useMemo(() => {
     const hours: { hour: string; count: number; totalLikes: number; avgLikes: number }[] = Array.from(
       { length: 24 },
@@ -140,8 +144,7 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
 
     records.forEach((r) => {
       try {
-        const d = new Date(r.timestamp);
-        const hour = d.getHours();
+        const { hour } = getTweetJSTInfo(r);
         if (hour >= 0 && hour < 24) {
           hours[hour].count++;
           hours[hour].totalLikes += r.likes || 0;
@@ -165,6 +168,7 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
   }, [hourlyData]);
 
   // --- 5. 曜日別パフォーマンス (日〜土) ---
+  // XのSnowflake IDまたはcreatedAtから真の投稿曜日(JST)を正確に集計
   const weekdayData = useMemo(() => {
     const days = ['日曜', '月曜', '火曜', '水曜', '木曜', '金曜', '土曜'];
     const list = days.map((day) => ({
@@ -176,11 +180,10 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
 
     records.forEach((r) => {
       try {
-        const d = new Date(r.timestamp);
-        const dayIdx = d.getDay();
-        if (dayIdx >= 0 && dayIdx < 7) {
-          list[dayIdx].count++;
-          list[dayIdx].totalLikes += r.likes || 0;
+        const { dayIndex } = getTweetJSTInfo(r);
+        if (dayIndex >= 0 && dayIndex < 7) {
+          list[dayIndex].count++;
+          list[dayIndex].totalLikes += r.likes || 0;
         }
       } catch {
         // ignore
@@ -433,6 +436,11 @@ export const CorrelationAnalysis: React.FC<CorrelationAnalysisProps> = ({ record
                         <p className="text-slate-300">
                           バズスコア: <span className="font-bold text-amber-400">{data.buzzScore}点</span>
                         </p>
+                        {data.postTiming && (
+                          <p className="text-[10px] text-slate-400 pt-0.5 border-t border-slate-800">
+                            投稿日時: <span className="text-slate-200 font-medium">{data.postTiming}</span>
+                          </p>
+                        )}
                       </div>
                     );
                   }

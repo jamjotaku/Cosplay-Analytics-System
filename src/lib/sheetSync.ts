@@ -1,5 +1,6 @@
 import Papa from 'papaparse';
 import { SheetRecord } from '@/types/tweet';
+import { getTweetJSTInfo } from '@/lib/tweetTime';
 
 function cleanNumber(val: any, fallback = 0): number {
   if (val === null || val === undefined) return fallback;
@@ -58,21 +59,27 @@ export async function fetchSheetData(csvUrl: string): Promise<SheetRecord[]> {
         : skinRatio;
       const framingTag = row['framingTag'] || row['構図'] || (skinRatio > 0.35 ? 'アップ・接写' : skinRatio < 0.12 ? '引き・全身' : 'ミドル・半身');
 
+      const hoursElapsed = cleanNumber(row['hoursElapsed'] ?? row['Hours Elapsed'] ?? row['経過時間'], 1);
+      const timestamp = row['timestamp'] || row['Timestamp'] || row['取得日時'] || new Date().toISOString();
+      const jstTiming = getTweetJSTInfo({ tweetUrl, timestamp, hoursElapsed }).formatted;
+      const postTiming = row['postTiming'] || row['投稿時間'] || jstTiming;
+
       records.push({
-        timestamp: row['timestamp'] || row['Timestamp'] || row['取得日時'] || new Date().toISOString(),
+        timestamp,
         tweetUrl,
         author: row['author'] || row['Author'] || row['ユーザー名'] || '',
         followers: cleanNumber(row['followers'] ?? row['Followers'] ?? row['フォロワー数']),
         likes: cleanNumber(row['likes'] ?? row['Likes'] ?? row['いいね数']),
         retweets: cleanNumber(row['retweets'] ?? row['Retweets'] ?? row['RP数']),
         impressions: cleanNumber(row['impressions'] ?? row['Impressions'] ?? row['インプレッション']),
-        hoursElapsed: cleanNumber(row['hoursElapsed'] ?? row['Hours Elapsed'] ?? row['経過時間'], 1),
+        hoursElapsed,
         skinRatio,
         buzzScore: cleanNumber(row['buzzScore'] ?? row['Buzz Score'] ?? row['バズスコア']),
         buzzGrade: row['buzzGrade'] || row['Buzz Grade'] || row['評価'] || 'C',
         imageUrl: row['imageUrl'] || row['Image URL'] || row['画像URL'] || '',
         bodySkinRatio,
         framingTag,
+        postTiming,
       });
     }
 
